@@ -33,7 +33,19 @@ app.use(
   }),
 );
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, uptime: process.uptime() }));
+app.get('/api/health', (_req, res) => {
+  const status = engine.status();
+  res.json({
+    ok: true,
+    uptime: process.uptime(),
+    running: status.running,
+    shouldRun: db.data.runtime.shouldRun,
+    mode: status.mode,
+    lastTickAt: status.lastTickAt,
+    lastScanAt: status.lastScanAt,
+    detached: true,
+  });
+});
 app.use('/api', router);
 
 const webDist = path.join(ROOT_DIR, 'web', 'dist');
@@ -70,4 +82,8 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('unhandledRejection', (reason) => {
   log.error(`Unbehandelte Promise-Ablehnung: ${String(reason)}`);
+});
+process.on('uncaughtException', (err) => {
+  log.error(`Ungefangene Ausnahme – Prozess bleibt am Leben: ${err.message}`);
+  db.flush();
 });

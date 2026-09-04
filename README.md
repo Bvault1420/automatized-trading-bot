@@ -34,6 +34,52 @@ npm run build && npm start
 
 ---
 
+## 24/7 – Bot läuft weiter, wenn Seite, PC oder Handy aus sind
+
+Das Dashboard ist nur die Fernbedienung. Der Handel sitzt im Node-Prozess auf
+**einem Rechner, der an bleibt** (VPS, Raspberry Pi, Mini-PC). Seite schließen
+oder Handy/PC ausschalten stoppt den Bot **nicht**, solange dieser Host läuft.
+
+Nach einem Absturz oder Reboot startet der Handel automatisch weiter, wenn du
+ihn zuvor gestartet hattest (`runtime.shouldRun` in `data/bot.json`). Für Live
+muss `WALLET_PASSPHRASE` in der `.env` stehen – sonst bleibt das Wallet nach
+einem Neustart gesperrt.
+
+### Immer-an auf diesem Rechner
+
+```bash
+npm run build
+npm run start:always
+```
+
+`start:always` startet den Bot in einer Endlosschleife neu, falls der Prozess
+stirbt. Das Terminal darf nicht beendet werden, oder du nutzt systemd/Docker.
+
+### Docker (empfohlen auf einem VPS)
+
+```bash
+cp .env.example .env   # WALLET_PASSPHRASE setzen
+docker compose up -d --build
+```
+
+Container starten nach Reboot von selbst (`restart: unless-stopped`).
+Dashboard: `http://<server-ip>:8787`
+
+### systemd (Linux-Server / Raspberry Pi)
+
+```bash
+sudo cp deploy/aletheia.service /etc/systemd/system/
+# WorkingDirectory und User in der Datei auf deinen Pfad anpassen
+sudo systemctl daemon-reload
+sudo systemctl enable --now aletheia
+```
+
+**Wichtig:** Ein Cursor-Cloud-Agent oder ein ausgeschalteter Heim-PC ist kein
+24/7-Host. Für echten Dauerbetrieb brauchst du einen VPS oder einen Rechner,
+den du nicht ausschaltest.
+
+---
+
 ## Wie der Bot entscheidet
 
 ### 1. Gesamtmarktbild (alle 90 Sekunden)

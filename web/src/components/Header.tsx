@@ -35,7 +35,7 @@ export function Header({
           <div>
             <h1 className="text-[15px] font-bold leading-tight tracking-tight text-white">Aletheia</h1>
             <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
-              Autonomer Trading-Bot
+              Läuft auf dem Server
             </p>
           </div>
         </div>
@@ -108,6 +108,13 @@ export function Header({
           </button>
         </div>
       </div>
+
+      {status.running && (
+        <div className="border-t border-emerald-500/15 bg-emerald-500/[0.06] px-6 py-2 text-center text-xs font-medium text-emerald-200/85">
+          Der Bot handelt auf dem Server – Seite schließen, PC oder Handy aus ändert nichts.
+          Stoppen nur hier oder wenn der Rechner/VPS ausgeht.
+        </div>
+      )}
 
       {!status.running && (status.haltReason || openPositions > 0) && (
         <div className="border-t border-amber-500/20 bg-amber-500/[0.07] px-6 py-2 text-center text-xs font-medium text-amber-300">

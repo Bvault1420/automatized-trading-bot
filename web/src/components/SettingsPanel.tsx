@@ -150,6 +150,13 @@ export function SettingsPanel({
         damit er nicht nur scannt, sondern auch kauft. Honeypots und harte
         Dumps bleiben draußen – keine Gewinn-Garantie.
       </p>
+      <p className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+        24/7: Das Dashboard ist nur die Fernbedienung. Solange der Bot-Prozess
+        auf einem immer eingeschalteten Rechner oder VPS läuft und
+        <span className="font-mono text-slate-400"> WALLET_PASSPHRASE </span>
+        in der <span className="font-mono text-slate-400">.env</span> steht,
+        handelt er weiter – auch wenn dieses Fenster zu ist.
+      </p>
       <div className="space-y-3.5">
         {FIELDS.map((field) => {
           const value = Number(draft[field.key]);

@@ -77,6 +77,7 @@ class Engine {
     this.timers.push(setInterval(() => void this.refreshIntelSafe(), config.intervals.intel));
     this.timers.push(setInterval(() => void this.scanSafe(), config.intervals.scan));
     this.timers.push(setInterval(() => void this.tickSafe(), config.intervals.tick));
+    this.timers.push(setInterval(() => this.watchdog(), 15_000));
 
     // Nach einem Neustart den Handel fortsetzen, wenn er zuvor lief – sonst
     // stuende der Bot nach einem Absturz unbemerkt still.
@@ -84,6 +85,22 @@ class Engine {
       void this.start(true).then((result) => {
         if (!result.ok) log.warn(`Automatischer Neustart des Handels nicht möglich: ${result.message}`);
       });
+    }
+  }
+
+  /**
+   * Hängende Intervalle stoßen die Schleifen erneut an. Der Browser ist
+   * dafür nie nötig – nur dieser Prozess.
+   */
+  private watchdog(): void {
+    const now = Date.now();
+    if (this.lastScanAt && now - this.lastScanAt > config.intervals.scan * 4) {
+      log.warn('Watchdog: Scan hängt – starte Suche neu');
+      void this.scanSafe();
+    }
+    if (this.running && this.lastTickAt && now - this.lastTickAt > config.intervals.tick * 6) {
+      log.warn('Watchdog: Tick hängt – starte Positionsprüfung neu');
+      void this.tickSafe();
     }
   }
 
