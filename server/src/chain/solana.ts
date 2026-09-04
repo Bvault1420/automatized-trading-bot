@@ -144,37 +144,41 @@ export async function mintDecimals(mint: string): Promise<number> {
 }
 
 export async function splBalances(owner: PublicKey, mints?: string[]): Promise<SplBalance[]> {
-  const conn = solanaConnection();
-  const [legacy, token2022] = await Promise.all([
-    conn.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }),
-    conn.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID }),
-  ]);
+  try {
+    const conn = solanaConnection();
+    const [legacy, token2022] = await Promise.all([
+      conn.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }),
+      conn.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID }),
+    ]);
 
-  const wanted = mints ? new Set(mints) : null;
-  const out: SplBalance[] = [];
-  const rows = [
-    ...legacy.value.map((row) => ({ row, programId: TOKEN_PROGRAM_ID })),
-    ...token2022.value.map((row) => ({ row, programId: TOKEN_2022_PROGRAM_ID })),
-  ];
+    const wanted = mints ? new Set(mints) : null;
+    const out: SplBalance[] = [];
+    const rows = [
+      ...legacy.value.map((row) => ({ row, programId: TOKEN_PROGRAM_ID })),
+      ...token2022.value.map((row) => ({ row, programId: TOKEN_2022_PROGRAM_ID })),
+    ];
 
-  for (const { row, programId } of rows) {
-    const info = row.account.data.parsed?.info as
-      | { mint?: string; tokenAmount?: { amount?: string; uiAmount?: number; decimals?: number } }
-      | undefined;
-    const mint = info?.mint;
-    if (!mint || (wanted && !wanted.has(mint))) continue;
-    const amount = BigInt(info.tokenAmount?.amount ?? '0');
-    if (amount <= 0n) continue;
-    out.push({
-      mint,
-      amount,
-      uiAmount: Number(info.tokenAmount?.uiAmount ?? 0),
-      decimals: Number(info.tokenAmount?.decimals ?? 0),
-      programId,
-      tokenAccount: row.pubkey,
-    });
+    for (const { row, programId } of rows) {
+      const info = row.account.data.parsed?.info as
+        | { mint?: string; tokenAmount?: { amount?: string; uiAmount?: number; decimals?: number } }
+        | undefined;
+      const mint = info?.mint;
+      if (!mint || (wanted && !wanted.has(mint))) continue;
+      const amount = BigInt(info.tokenAmount?.amount ?? '0');
+      if (amount <= 0n) continue;
+      out.push({
+        mint,
+        amount,
+        uiAmount: Number(info.tokenAmount?.uiAmount ?? 0),
+        decimals: Number(info.tokenAmount?.decimals ?? 0),
+        programId,
+        tokenAccount: row.pubkey,
+      });
+    }
+    return out;
+  } catch {
+    return [];
   }
-  return out;
 }
 
 export async function tokenAmountForMint(owner: PublicKey, mint: string): Promise<SplBalance | null> {

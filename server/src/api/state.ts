@@ -1,6 +1,8 @@
+import { isAddress } from 'viem';
 import { config } from '../config.js';
 import { db } from '../store/db.js';
 import { hotWallet } from '../chain/hot.js';
+import { isSolanaAddress, isSolanaChain } from '../chain/solana.js';
 import { readDeposits } from '../chain/deposits.js';
 import { getIntel } from '../intel/index.js';
 import { getCandidates } from '../scanner/index.js';
@@ -15,10 +17,13 @@ const liveExecutor = new LiveExecutor();
 
 export async function walletState(): Promise<WalletState> {
   const [snap, blockers] = await Promise.all([readDeposits(), liveExecutor.blockers()]);
+  const rawOwner = db.data.wallet.ownerAddress;
+  const ownerAddress =
+    rawOwner && (isSolanaChain() ? isSolanaAddress(rawOwner) : isAddress(rawOwner)) ? rawOwner : null;
 
   return {
     family: config.chain.family,
-    ownerAddress: db.data.wallet.ownerAddress,
+    ownerAddress,
     botAddress: hotWallet.address,
     chain: config.chain.name,
     chainId: config.chain.id,

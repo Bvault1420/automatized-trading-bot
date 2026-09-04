@@ -30,7 +30,7 @@ export const CHAINS = {
     goplusId: 'solana',
     nativeSymbol: 'SOL',
     wrappedNative: 'So11111111111111111111111111111111111111112',
-    defaultRpc: 'https://solana-rpc.publicnode.com',
+    defaultRpc: 'https://api.mainnet-beta.solana.com',
     explorer: 'https://solscan.io',
     family: 'solana' as const,
   },
