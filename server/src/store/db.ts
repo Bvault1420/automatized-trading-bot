@@ -13,9 +13,12 @@ export interface DbShape {
   runtime: { shouldRun: boolean };
   wallet: {
     ownerAddress: string | null;
-    /** verschluesselter Keystore des Bot-Wallets */
+    /** verschluesselter EVM-Keystore */
     keystore: string | null;
     botAddress: string | null;
+    /** verschluesselter Solana-Keystore (getrennt vom EVM-Wallet) */
+    solanaKeystore: string | null;
+    solanaAddress: string | null;
   };
   paper: {
     cashUsd: number;
@@ -60,7 +63,7 @@ function defaultDb(): DbShape {
       scanChains: [...config.scanChains],
     },
     runtime: { shouldRun: false },
-    wallet: { ownerAddress: null, keystore: null, botAddress: null },
+    wallet: { ownerAddress: null, keystore: null, botAddress: null, solanaKeystore: null, solanaAddress: null },
     paper: {
       cashUsd: d.paperStartBalance,
       startEquityUsd: d.paperStartBalance,

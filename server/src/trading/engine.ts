@@ -11,7 +11,7 @@ import { portfolio } from './portfolio.js';
 import { checkCandidate, checkGlobalRisk, positionSizeUsd, type RiskContext } from './risk.js';
 import { PaperExecutor } from './executor/paper.js';
 import { LiveExecutor } from './executor/live.js';
-import { botWallet } from '../chain/wallet.js';
+import { hotWallet } from '../chain/hot.js';
 import { sweepToNative } from '../chain/deposits.js';
 import type { Executor } from './executor/types.js';
 import type { BotSettings, BotStatus, Position, ScoredCandidate, TradingMode } from '../types.js';
@@ -238,7 +238,7 @@ class Engine {
   private async tick(): Promise<void> {
     this.lastTickAt = Date.now();
 
-    if (botWallet.unlocked) {
+    if (hotWallet.unlocked) {
       try {
         await sweepToNative();
       } catch {
@@ -268,7 +268,7 @@ class Engine {
   /** Im Live-Modus sind Verkaeufe ohne entsperrtes Wallet technisch unmoeglich. */
   private canExit(): boolean {
     if (this.mode !== 'live') return true;
-    if (botWallet.unlocked) return true;
+    if (hotWallet.unlocked) return true;
 
     const open = portfolio.openPositions('live').length;
     if (open > 0 && Date.now() - this.lockedWarningAt > 5 * 60_000) {

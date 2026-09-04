@@ -56,7 +56,8 @@ export function clock(ts: number): string {
 
 export function shortAddress(address: string | null): string {
   if (!address) return '–';
-  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+  if (address.startsWith('0x')) return `${address.slice(0, 6)}…${address.slice(-4)}`;
+  return `${address.slice(0, 4)}…${address.slice(-4)}`;
 }
 
 export function ageLabel(hours: number): string {

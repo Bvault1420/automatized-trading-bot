@@ -1,11 +1,21 @@
 import { erc20Abi, formatUnits, maxUint256, parseEther, parseUnits, type Address, type Hex } from 'viem';
 import { config } from '../../config.js';
 import { botWallet } from '../../chain/wallet.js';
+import { hotWallet } from '../../chain/hot.js';
 import { nativePriceUsd } from '../../chain/prices.js';
 import { createLogger } from '../../util/logger.js';
 import { clamp } from '../../util/num.js';
 import { routeSwap } from './router.js';
+import { executeSwap } from './jupiter.js';
 import { readDeposits, sweepToNative } from '../../chain/deposits.js';
+import {
+  GAS_RESERVE_SOL,
+  WSOL_MINT,
+  isSolanaChain,
+  tokenAmountForMint,
+} from '../../chain/solana.js';
+import { solanaWallet } from '../../chain/solanaWallet.js';
+import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import type { Position, TokenCandidate } from '../../types.js';
 import type { BuyResult, Executor, SellResult } from './types.js';
 
@@ -14,11 +24,23 @@ const log = createLogger('live');
 /** Native-Reserve, damit immer genug fuer Gas (auch fuer den Exit) bleibt. */
 export const GAS_RESERVE_ETH = 0.00025;
 
+export function gasReserve(): number {
+  return isSolanaChain() ? GAS_RESERVE_SOL : GAS_RESERVE_ETH;
+}
+
+function failBuy(error: string): BuyResult {
+  return { ok: false, error, tokenAmount: 0, priceUsd: 0, spentUsd: 0, feeUsd: 0, slippagePct: 0 };
+}
+
+function failSell(error: string): SellResult {
+  return { ok: false, error, tokenAmount: 0, priceUsd: 0, proceedsUsd: 0, feeUsd: 0, slippagePct: 0 };
+}
+
 /**
  * Fuehrt echte On-Chain-Swaps aus.
  *
- * Das Routing laeuft ueber oeffentliche Aggregatoren (KyberSwap, LiFi, optional 0x).
- * Ein API-Key ist dafuer nicht noetig – der Bot kann nach Einzahlung sofort handeln.
+ * Solana: Jupiter Lite API (kein Key noetig).
+ * EVM: KyberSwap / LiFi (optional 0x).
  */
 export class LiveExecutor implements Executor {
   readonly mode = 'live' as const;
@@ -27,38 +49,42 @@ export class LiveExecutor implements Executor {
 
   async blockers(): Promise<string[]> {
     const reasons: string[] = [];
-    if (!botWallet.hasKeystore) reasons.push('Zuerst ein Bot-Wallet erstellen (rechte Seite, Passphrase vergeben)');
-    else if (!botWallet.unlocked) {
+    const native = config.chain.nativeSymbol;
+    if (!hotWallet.hasKeystore) reasons.push('Zuerst ein Bot-Wallet erstellen (rechte Seite, Passphrase vergeben)');
+    else if (!hotWallet.unlocked) {
       reasons.push('Bot-Wallet ist gesperrt – Passphrase eingeben, damit der Bot Transaktionen signieren kann');
     }
 
-    const snap = botWallet.address
+    const snap = hotWallet.address
       ? await readDeposits()
       : { nativeBalance: 0, tokenUsd: 0, totalUsd: 0, nativeBalanceUsd: 0 };
 
-    if (snap.nativeBalance <= GAS_RESERVE_ETH && snap.tokenUsd < 1) {
+    const reserve = gasReserve();
+    if (snap.nativeBalance <= reserve && snap.tokenUsd < 1) {
       reasons.push(
-        `Noch kein Guthaben: sende ETH, USDC oder cbBTC (Bitcoin auf Base) auf ${config.chain.name} an das Bot-Wallet`,
+        isSolanaChain()
+          ? `Noch kein Guthaben: sende SOL oder USDC auf Solana an das Bot-Wallet`
+          : `Noch kein Guthaben: sende ETH, USDC oder cbBTC auf ${config.chain.name} an das Bot-Wallet`,
       );
-    } else if (snap.nativeBalance <= GAS_RESERVE_ETH && snap.tokenUsd >= 1) {
+    } else if (snap.nativeBalance <= reserve && snap.tokenUsd >= 1) {
       reasons.push(
-        `${snap.tokenUsd.toFixed(2)} $ in Tokens erkannt, aber es fehlt etwas ${config.chain.nativeSymbol} als Gas für die Umwandlung (ein paar Cent reichen)`,
+        `${snap.tokenUsd.toFixed(2)} $ in Tokens erkannt, aber es fehlt etwas ${native} als Gebühr für die Umwandlung`,
       );
     }
     return reasons;
   }
 
   async availableCashUsd(): Promise<number> {
-    if (botWallet.unlocked) {
+    if (hotWallet.unlocked) {
       try {
         await sweepToNative();
       } catch {
-        // Umwandlung fehlgeschlagen: dann mit dem zählen, was schon ETH ist.
+        // Umwandlung fehlgeschlagen: dann mit dem zählen, was schon Native ist.
       }
     }
     const snap = await readDeposits();
-    const ethUsd = Math.max(0, snap.nativeBalance - GAS_RESERVE_ETH) * snap.nativePriceUsd;
-    return ethUsd + snap.tokenUsd;
+    const nativeUsd = Math.max(0, snap.nativeBalance - gasReserve()) * snap.nativePriceUsd;
+    return nativeUsd + snap.tokenUsd;
   }
 
   private async decimals(token: Address): Promise<number> {
@@ -111,22 +137,82 @@ export class LiveExecutor implements Executor {
     log.info(`Freigabe erteilt für ${token} an ${spender} – ${approveHash}`);
   }
 
-  async buy(candidate: TokenCandidate, amountUsd: number, maxSlippagePct: number): Promise<BuyResult> {
-    const fail = (error: string): BuyResult => ({
-      ok: false, error, tokenAmount: 0, priceUsd: 0, spentUsd: 0, feeUsd: 0, slippagePct: 0,
-    });
+  private async buySolana(candidate: TokenCandidate, amountUsd: number, maxSlippagePct: number): Promise<BuyResult> {
+    const solPrice = await nativePriceUsd('SOL');
+    if (solPrice <= 0) return failBuy('SOL-Preis nicht verfügbar');
 
+    const sellSol = amountUsd / solPrice;
+    const balance = await solanaWallet.nativeBalance();
+    if (balance - GAS_RESERVE_SOL < sellSol) return failBuy('Guthaben im Bot-Wallet reicht nicht');
+
+    const lamports = BigInt(Math.floor(sellSol * LAMPORTS_PER_SOL));
+    if (lamports <= 0n) return failBuy('Betrag zu klein für einen Swap');
+
+    const result = await executeSwap(WSOL_MINT, candidate.tokenAddress, lamports, maxSlippagePct);
+    const tokenAmount = Number(result.outAmount) / 10 ** result.outDecimals;
+    const spentSol = Number(result.inAmount) / LAMPORTS_PER_SOL;
+    const spentUsd = spentSol * solPrice;
+    if (tokenAmount <= 0) return failBuy('Jupiter lieferte eine Menge von 0');
+
+    log.trade(
+      `GEKAUFT ${candidate.symbol}: ${tokenAmount.toFixed(4)} für $${spentUsd.toFixed(2)} über Jupiter – ${result.signature}`,
+    );
+    return {
+      ok: true,
+      tokenAmount,
+      priceUsd: tokenAmount > 0 ? spentUsd / tokenAmount : 0,
+      spentUsd,
+      feeUsd: 0,
+      slippagePct: 0,
+      txHash: result.signature,
+    };
+  }
+
+  private async sellSolana(position: Position, fraction: number, maxSlippagePct: number): Promise<SellResult> {
+    const owner = solanaWallet.requireKeypair().publicKey;
+    const held = await tokenAmountForMint(owner, position.tokenAddress);
+    if (!held || held.amount <= 0n) return failSell('Kein Token-Guthaben zum Verkaufen');
+
+    const sellRaw =
+      fraction >= 0.999
+        ? held.amount
+        : (held.amount * BigInt(Math.round(clamp(fraction, 0, 1) * 10_000))) / 10_000n;
+    if (sellRaw <= 0n) return failSell('Kein Token-Guthaben zum Verkaufen');
+
+    const solPrice = await nativePriceUsd('SOL');
+    const result = await executeSwap(position.tokenAddress, WSOL_MINT, sellRaw, Math.min(50, maxSlippagePct * 2));
+    const solOut = Number(result.outAmount) / LAMPORTS_PER_SOL;
+    const proceedsUsd = solOut * solPrice;
+    const tokenAmount = Number(sellRaw) / 10 ** held.decimals;
+
+    log.trade(
+      `VERKAUFT ${position.symbol}: ${tokenAmount.toFixed(4)} für $${proceedsUsd.toFixed(2)} über Jupiter – ${result.signature}`,
+    );
+    return {
+      ok: true,
+      tokenAmount,
+      priceUsd: tokenAmount > 0 ? proceedsUsd / tokenAmount : 0,
+      proceedsUsd,
+      feeUsd: 0,
+      slippagePct: 0,
+      txHash: result.signature,
+    };
+  }
+
+  async buy(candidate: TokenCandidate, amountUsd: number, maxSlippagePct: number): Promise<BuyResult> {
     if (candidate.chain !== config.chain.dexscreenerId) {
-      return fail(`Live-Handel ist nur auf ${config.chain.name} konfiguriert`);
+      return failBuy(`Live-Handel ist nur auf ${config.chain.name} konfiguriert`);
     }
 
     try {
+      if (isSolanaChain()) return await this.buySolana(candidate, amountUsd, maxSlippagePct);
+
       const ethPrice = await nativePriceUsd(config.chain.nativeSymbol);
-      if (ethPrice <= 0) return fail('Native-Preis nicht verfügbar');
+      if (ethPrice <= 0) return failBuy('Native-Preis nicht verfügbar');
 
       const sellEth = amountUsd / ethPrice;
       const balance = await botWallet.nativeBalance();
-      if (balance - GAS_RESERVE_ETH < sellEth) return fail('Guthaben im Bot-Wallet reicht nicht');
+      if (balance - GAS_RESERVE_ETH < sellEth) return failBuy('Guthaben im Bot-Wallet reicht nicht');
 
       const sellAmount = parseEther(sellEth.toFixed(18));
       const quote = await routeSwap({
@@ -139,7 +225,7 @@ export class LiveExecutor implements Executor {
 
       const decimals = await this.decimals(candidate.tokenAddress as Address);
       const tokenAmount = Number(formatUnits(quote.buyAmount, decimals));
-      if (tokenAmount <= 0) return fail('Router lieferte eine Menge von 0');
+      if (tokenAmount <= 0) return failBuy('Router lieferte eine Menge von 0');
 
       const hash = await this.sendAndWait(quote);
 
@@ -160,16 +246,14 @@ export class LiveExecutor implements Executor {
         txHash: hash,
       };
     } catch (err) {
-      return fail((err as Error).message);
+      return failBuy((err as Error).message);
     }
   }
 
   async sell(position: Position, fraction: number, maxSlippagePct: number): Promise<SellResult> {
-    const fail = (error: string): SellResult => ({
-      ok: false, error, tokenAmount: 0, priceUsd: 0, proceedsUsd: 0, feeUsd: 0, slippagePct: 0,
-    });
-
     try {
+      if (isSolanaChain()) return await this.sellSolana(position, fraction, maxSlippagePct);
+
       const account = botWallet.requireAccount();
       const token = position.tokenAddress as Address;
       const decimals = await this.decimals(token);
@@ -185,7 +269,7 @@ export class LiveExecutor implements Executor {
         fraction >= 0.999
           ? onChainBalance
           : (onChainBalance * BigInt(Math.round(clamp(fraction, 0, 1) * 10_000))) / 10_000n;
-      if (sellRaw <= 0n) return fail('Kein Token-Guthaben zum Verkaufen');
+      if (sellRaw <= 0n) return failSell('Kein Token-Guthaben zum Verkaufen');
 
       const ethPrice = await nativePriceUsd(config.chain.nativeSymbol);
       const quote = await routeSwap({
@@ -217,7 +301,7 @@ export class LiveExecutor implements Executor {
         txHash: hash,
       };
     } catch (err) {
-      return fail((err as Error).message);
+      return failSell((err as Error).message);
     }
   }
 }

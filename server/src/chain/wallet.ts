@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import {
   createPublicClient,
   createWalletClient,
@@ -15,45 +14,20 @@ import { arbitrum, base, bsc, mainnet } from 'viem/chains';
 import { config } from '../config.js';
 import { db } from '../store/db.js';
 import { createLogger } from '../util/logger.js';
+import { encryptSecret, decryptSecret } from '../util/secret.js';
 
 const log = createLogger('wallet');
 
 const VIEM_CHAINS = { base, ethereum: mainnet, bsc, arbitrum } as const;
-
-/**
- * Verschluesselung des Bot-Schluessels: scrypt zur Schluesselableitung aus der
- * Passphrase, AES-256-GCM fuer Vertraulichkeit und Integritaet.
- */
-function encrypt(privateKey: string, passphrase: string): string {
-  const salt = crypto.randomBytes(16);
-  const iv = crypto.randomBytes(12);
-  const key = crypto.scryptSync(passphrase, salt, 32, { N: 16384, r: 8, p: 1 });
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const encrypted = Buffer.concat([cipher.update(privateKey, 'utf8'), cipher.final()]);
-  return [
-    'v1',
-    salt.toString('base64'),
-    iv.toString('base64'),
-    cipher.getAuthTag().toString('base64'),
-    encrypted.toString('base64'),
-  ].join(':');
-}
-
-function decrypt(keystore: string, passphrase: string): string {
-  const [version, saltB64, ivB64, tagB64, dataB64] = keystore.split(':');
-  if (version !== 'v1') throw new Error('Unbekanntes Keystore-Format');
-  const key = crypto.scryptSync(passphrase, Buffer.from(saltB64, 'base64'), 32, { N: 16384, r: 8, p: 1 });
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64, 'base64'));
-  decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
-  return Buffer.concat([decipher.update(Buffer.from(dataB64, 'base64')), decipher.final()]).toString('utf8');
-}
 
 class BotWallet {
   private account: PrivateKeyAccount | null = null;
   private publicClientCache: PublicClient | null = null;
 
   get chain() {
-    return VIEM_CHAINS[config.chainKey] ?? base;
+    if (config.chain.family !== 'evm') return base;
+    const key = config.chainKey as keyof typeof VIEM_CHAINS;
+    return VIEM_CHAINS[key] ?? base;
   }
 
   get rpcUrl(): string {
@@ -106,7 +80,7 @@ class BotWallet {
     const privateKey = generatePrivateKey();
     const account = privateKeyToAccount(privateKey);
     db.update((draft) => {
-      draft.wallet.keystore = encrypt(privateKey, passphrase);
+      draft.wallet.keystore = encryptSecret(privateKey, passphrase);
       draft.wallet.botAddress = account.address;
     });
     this.account = account;
@@ -119,7 +93,7 @@ class BotWallet {
     if (!keystore) throw new Error('Kein Bot-Wallet vorhanden');
     let privateKey: string;
     try {
-      privateKey = decrypt(keystore, passphrase);
+      privateKey = decryptSecret(keystore, passphrase);
     } catch {
       throw new Error('Falsche Passphrase');
     }
@@ -141,7 +115,7 @@ class BotWallet {
     const keystore = db.data.wallet.keystore;
     if (!keystore) throw new Error('Kein Bot-Wallet vorhanden');
     try {
-      return decrypt(keystore, passphrase);
+      return decryptSecret(keystore, passphrase);
     } catch {
       throw new Error('Falsche Passphrase');
     }

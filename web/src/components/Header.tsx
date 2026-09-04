@@ -86,7 +86,8 @@ export function Header({
           <Chip tone={connection === 'live' ? 'indigo' : 'rose'}>
             {connection === 'live' ? 'Verbunden' : connection === 'connecting' ? 'Verbinde …' : 'Offline'}
           </Chip>
-          {isLive && <Chip tone="rose">Echtes Geld</Chip>}
+          {isLive && <Chip tone="rose">Echtes Geld · {wallet.chain}</Chip>}
+          {!isLive && <Chip tone="slate">{wallet.chain}</Chip>}
         </div>
 
         <div className="ml-auto flex items-center gap-2">

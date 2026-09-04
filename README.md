@@ -138,46 +138,44 @@ unbemerkt stilllegen.
 
 ## Wallet-Konzept
 
-MetaMask kann einen Bot nicht autonom handeln lassen – jede Transaktion
-verlangt eine manuelle Bestätigung im Browser. Deshalb arbeitet Aletheia mit
+Weder Phantom noch MetaMask können einen Bot autonom handeln lassen – jede
+Transaktion verlangt eine manuelle Bestätigung. Deshalb arbeitet Aletheia mit
 zwei Wallets:
 
-1. **Dein MetaMask** – wird verbunden und dient als Ein- und Auszahlungsziel.
-   Der Bot bekommt dadurch keinerlei Zugriff darauf.
+1. **Dein Phantom (Solana) oder MetaMask (EVM)** – wird verbunden und dient als
+   Ein- und Auszahlungsziel. Der Bot bekommt dadurch keinerlei Zugriff darauf.
 2. **Das Handelswallet des Bots** – wird lokal erzeugt, der private Schlüssel
-   liegt mit scrypt + AES-256-GCM verschlüsselt in `data/bot.json`. Du zahlst
-   dort z. B. 10 € als ETH, USDC, USDT, DAI oder cbBTC (Bitcoin auf Base) ein.
-   Andere akzeptierte Tokens wandelt der Bot selbst in ETH um und handelt
-   damit. Native Bitcoin oder Solana können an diese EVM-Adresse nicht
-   ankommen.
+   liegt mit scrypt + AES-256-GCM verschlüsselt in `data/bot.json`. Solana- und
+   EVM-Schlüssel sind getrennt: ein altes Base-Wallet ist kein Solana-Wallet.
 
 Die **Passphrase** ist kein Seed. Du vergibst sie selbst beim Erstellen; sie
 verschlüsselt den privaten Schlüssel auf diesem Rechner. Nach einem Neustart
 muss sie erneut eingegeben werden.
 
 Du behältst jederzeit die volle Kontrolle: „Auszahlen" schickt das gesamte
-Guthaben an deine MetaMask-Adresse zurück, und über `POST /api/wallet/export`
-lässt sich der private Schlüssel exportieren und direkt in MetaMask importieren.
+Guthaben an deine Phantom-/MetaMask-Adresse zurück, und über
+`POST /api/wallet/export` lässt sich der Schlüssel exportieren (Solana: Base58
+für Phantom, EVM: Hex für MetaMask).
 
-### Echtgeld-Modus aktivieren
+### Echtgeld auf Solana (Standard)
 
-Ein API-Key ist **nicht** nötig. Swaps laufen über KyberSwap und LiFi
-(öffentliche Aggregatoren). 0x ist nur ein optionaler Zusatzrouter.
+Memecoin-Volumen und die meisten neuen Tokens liegen auf Solana. Live-Swaps
+laufen über die **Jupiter Lite API** – ein API-Key ist nicht nötig.
 
 Im Dashboard, rechte Seite „Echtgeld einrichten":
 
-1. Bot-Wallet erstellen (Passphrase merken)
+1. Bot-Wallet erstellen (Passphrase merken) – das ist eine **Solana-Adresse**
 2. Wallet entsperren (nach jedem Server-Neustart erneut)
-3. Auf **Base** einzahlen: ETH, USDC, USDT, DAI oder cbBTC – gleiche Adresse,
-   entweder kopieren oder direkt aus MetaMask. Ein paar Cent ETH als Gas
-   werden gebraucht, wenn du nur Tokens schickst.
+3. Auf **Solana** einzahlen: SOL oder USDC (gleiche Adresse), entweder kopieren
+   oder direkt aus Phantom. Ein wenig SOL als Gebühr wird gebraucht, wenn du
+   nur Tokens schickst. Native ETH oder Bitcoin kommen dort **nicht** an.
 4. Oben auf **Echtgeld** umschalten und den Bot starten
 
 Optional in `.env`: `WALLET_PASSPHRASE` (entsperrt beim Start automatisch)
-und `RPC_URL` (eigener RPC, öffentliche Endpunkte limitieren stark).
+und `RPC_URL` (eigener Solana-RPC; öffentliche Endpunkte limitieren stark).
 
-Base ist voreingestellt, weil die Transaktionsgebühren dort im Bereich weniger
-Cent liegen – bei einem Einsatz von 10 € ist das entscheidend.
+EVM (Base/Ethereum/BSC/Arbitrum) bleibt über `CHAIN=base` verfügbar; Swaps
+laufen dann über KyberSwap/LiFi.
 
 ---
 
@@ -203,7 +201,7 @@ server/src
 │   ├── portfolio.ts       Positionen, Trades, Kennzahlen
 │   ├── risk.ts            Risikoprüfungen, Positionsgröße
 │   └── executor/          Simulation und echte Swaps
-├── chain/                 Wallet (viem), Native-Preise
+├── chain/                 Hot-Wallet (Solana + EVM), Einzahlungen, Preise
 ├── api/                   REST-Endpunkte, WebSocket, Zustand
 └── store/db.ts            Persistenz (JSON, atomar)
 
@@ -221,7 +219,7 @@ Zurücksetzen genügt das Löschen der Datei.
 | --- | --- | --- |
 | `TRADING_MODE` | `paper` | `paper` oder `live` |
 | `PAPER_START_BALANCE` | `11` | Startkapital der Simulation in USD |
-| `CHAIN` | `base` | Chain für echte Swaps (`base`, `ethereum`, `bsc`, `arbitrum`) |
+| `CHAIN` | `solana` | Chain für echte Swaps (`solana`, `base`, `ethereum`, `bsc`, `arbitrum`) |
 | `RPC_URL` | öffentlich | Eigener RPC-Endpunkt |
 | `WALLET_PASSPHRASE` | – | Entsperrt das Bot-Wallet beim Start |
 | `ZEROX_API_KEY` | – | Optional, zusätzlicher Swap-Router |

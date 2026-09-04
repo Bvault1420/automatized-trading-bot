@@ -41,5 +41,7 @@ export const api = {
   withdraw: (to?: string) => post<ActionResult & { txHash: string }>('/wallet/withdraw', to ? { to } : {}),
   exportKey: (passphrase: string) => post<{ ok: boolean; privateKey: string }>('/wallet/export', { passphrase }),
   sweep: () => post<ActionResult>('/wallet/sweep'),
+  prepareDeposit: (from: string, symbol: string, amountEur: number) =>
+    post<ActionResult & { transaction: string }>('/wallet/prepare-deposit', { from, symbol, amountEur }),
   resetPaper: (balance: number) => post<ActionResult>('/paper/reset', { balance }),
 };

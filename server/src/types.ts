@@ -258,7 +258,8 @@ export interface DepositAsset {
 }
 
 export interface WalletState {
-  /** vom Nutzer verbundene MetaMask-Adresse (Auszahlungsziel) */
+  family: 'solana' | 'evm';
+  /** vom Nutzer verbundene Phantom-/MetaMask-Adresse (Auszahlungsziel) */
   ownerAddress: string | null;
   /** Adresse des Bot-Hot-Wallets, das autonom handelt */
   botAddress: string | null;

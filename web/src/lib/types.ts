@@ -199,6 +199,7 @@ export interface DepositAsset {
 }
 
 export interface WalletState {
+  family: 'solana' | 'evm';
   ownerAddress: string | null;
   botAddress: string | null;
   chain: string;
@@ -247,6 +248,7 @@ export interface FullState {
   meta: {
     chain: string;
     chainId: number;
+    family?: 'solana' | 'evm';
     nativeSymbol: string;
     explorer: string;
     scanChains: string[];

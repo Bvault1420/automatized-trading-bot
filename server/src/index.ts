@@ -7,7 +7,7 @@ import { config, ROOT_DIR } from './config.js';
 import { router } from './api/routes.js';
 import { attachWebSocket } from './api/ws.js';
 import { engine } from './trading/engine.js';
-import { autoUnlock } from './chain/wallet.js';
+import { autoUnlock } from './chain/hot.js';
 import { db } from './store/db.js';
 import { createLogger } from './util/logger.js';
 

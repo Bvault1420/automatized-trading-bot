@@ -1,4 +1,5 @@
 import { erc20Abi, formatUnits, type Address } from 'viem';
+import { PublicKey } from '@solana/web3.js';
 import { config } from '../config.js';
 import { botWallet } from './wallet.js';
 import { nativePriceUsd } from './prices.js';
@@ -6,6 +7,10 @@ import { getJson } from '../util/http.js';
 import { createLogger } from '../util/logger.js';
 import { round, safeNumber } from '../util/num.js';
 import { routeSwap } from '../trading/executor/router.js';
+import { executeSwap } from '../trading/executor/jupiter.js';
+import { USDC_MINT, USDT_MINT, WSOL_MINT, isSolanaChain, splBalances } from './solana.js';
+import { solanaWallet } from './solanaWallet.js';
+import { hotWallet } from './hot.js';
 import type { DepositAsset } from '../types.js';
 
 const log = createLogger('deposit');
@@ -14,7 +19,7 @@ const GAS_RESERVE_ETH = 0.00025;
 export interface DepositToken {
   symbol: string;
   name: string;
-  address: Address;
+  address: string;
   decimals: number;
   kind: DepositAsset['kind'];
   geckoId?: string;
@@ -23,13 +28,16 @@ export interface DepositToken {
 
 /**
  * Tokens die der Bot als Einzahlung akzeptiert und selbststaendig in den
- * Native-Coin der Handelschain (auf Base: ETH) umwandelt.
+ * Native-Coin der Handelschain umwandelt.
  *
- * Native Bitcoin oder Solana koennen an diese EVM-Adresse nicht ankommen –
- * dafuer gibt es cbBTC (Bitcoin auf Base) bzw. man wechselt vorher bei einer
- * Boerse in ETH/USDC auf Base.
+ * Auf Solana: SOL und USDC/USDT (SPL). Native ETH/BTC kommen dort nicht an.
+ * Auf Base: ETH, Stables, cbBTC. Native BTC/SOL kommen an eine EVM-Adresse nicht an.
  */
 const ACCEPTED: Record<string, DepositToken[]> = {
+  solana: [
+    { symbol: 'USDC', name: 'USD Coin', address: USDC_MINT, decimals: 6, kind: 'stable', stable: true },
+    { symbol: 'USDT', name: 'Tether', address: USDT_MINT, decimals: 6, kind: 'stable', stable: true },
+  ],
   base: [
     { symbol: 'WETH', name: 'Wrapped Ether', address: '0x4200000000000000000000000000000000000006', decimals: 18, kind: 'wrapped' },
     { symbol: 'USDC', name: 'USD Coin', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6, kind: 'stable', stable: true },
@@ -77,17 +85,17 @@ const WETH_ABI = [
 ] as const;
 
 export function acceptedTokens(): DepositToken[] {
-  return ACCEPTED[config.chain.dexscreenerId] ?? ACCEPTED.base;
+  return ACCEPTED[config.chain.dexscreenerId] ?? [];
 }
 
 async function tokenPricesUsd(tokens: DepositToken[]): Promise<Map<string, number>> {
   const prices = new Map<string, number>();
-  const eth = await nativePriceUsd(config.chain.nativeSymbol);
+  const native = await nativePriceUsd(config.chain.nativeSymbol);
   const btc = await nativePriceUsd('BTC');
 
   for (const token of tokens) {
     if (token.stable) prices.set(token.symbol, 1);
-    else if (token.kind === 'wrapped') prices.set(token.symbol, eth);
+    else if (token.kind === 'wrapped') prices.set(token.symbol, native);
     else if (token.kind === 'btc') prices.set(token.symbol, btc);
   }
 
@@ -118,6 +126,61 @@ export interface DepositSnapshot {
 }
 
 export async function readDeposits(): Promise<DepositSnapshot> {
+  if (isSolanaChain()) return readSolanaDeposits();
+  return readEvmDeposits();
+}
+
+async function readSolanaDeposits(): Promise<DepositSnapshot> {
+  const address = solanaWallet.address;
+  const nativePrice = await nativePriceUsd('SOL');
+  const nativeBalance = address ? await solanaWallet.nativeBalance() : 0;
+  const tokens = acceptedTokens();
+  const prices = await tokenPricesUsd(tokens);
+
+  const assets: DepositAsset[] = [
+    {
+      symbol: 'SOL',
+      name: 'Solana',
+      address: null,
+      decimals: 9,
+      kind: 'native',
+      balance: round(nativeBalance, 8),
+      balanceUsd: round(nativeBalance * nativePrice, 2),
+      priceUsd: round(nativePrice, 2),
+    },
+  ];
+
+  const held = address ? await splBalances(new PublicKey(address), tokens.map((t) => t.address)) : [];
+  const byMint = new Map(held.map((row) => [row.mint, row]));
+
+  for (const token of tokens) {
+    const row = byMint.get(token.address);
+    const balance = row?.uiAmount ?? 0;
+    const price = prices.get(token.symbol) ?? (token.stable ? 1 : 0);
+    assets.push({
+      symbol: token.symbol,
+      name: token.name,
+      address: token.address,
+      decimals: token.decimals,
+      kind: token.kind,
+      balance: round(balance, 6),
+      balanceUsd: round(balance * price, 2),
+      priceUsd: round(price, 2),
+    });
+  }
+
+  const tokenUsd = assets.filter((a) => a.kind !== 'native').reduce((sum, a) => sum + a.balanceUsd, 0);
+  return {
+    nativeBalance,
+    nativeBalanceUsd: nativeBalance * nativePrice,
+    nativePriceUsd: nativePrice,
+    assets,
+    tokenUsd,
+    totalUsd: nativeBalance * nativePrice + tokenUsd,
+  };
+}
+
+async function readEvmDeposits(): Promise<DepositSnapshot> {
   const address = botWallet.address;
   const nativePrice = await nativePriceUsd(config.chain.nativeSymbol);
   const nativeBalance = address ? await botWallet.nativeBalance() : 0;
@@ -143,7 +206,7 @@ export async function readDeposits(): Promise<DepositSnapshot> {
       tokens.map(async (token) => {
         try {
           const raw = await client.readContract({
-            address: token.address,
+            address: token.address as Address,
             abi: erc20Abi,
             functionName: 'balanceOf',
             args: [address],
@@ -198,101 +261,135 @@ export async function readDeposits(): Promise<DepositSnapshot> {
 const MIN_SWEEP_USD = 0.5;
 let sweeping = false;
 
+async function sweepSolana(): Promise<{ converted: number; messages: string[] }> {
+  if (!solanaWallet.unlocked) return { converted: 0, messages: [] };
+  const snap = await readSolanaDeposits();
+  if (snap.nativeBalance < 0.002) {
+    return { converted: 0, messages: ['Für die Umwandlung fehlt etwas SOL als Gebühr'] };
+  }
+
+  const messages: string[] = [];
+  let converted = 0;
+  const owner = solanaWallet.requireKeypair().publicKey;
+  const held = await splBalances(owner, [USDC_MINT, USDT_MINT]);
+
+  for (const row of held) {
+    if (row.uiAmount < MIN_SWEEP_USD) continue;
+    try {
+      const result = await executeSwap(row.mint, WSOL_MINT, row.amount, 2);
+      const symbol = row.mint === USDC_MINT ? 'USDC' : row.mint === USDT_MINT ? 'USDT' : row.mint.slice(0, 6);
+      messages.push(`${symbol} in SOL getauscht über Jupiter (${result.signature.slice(0, 10)}…)`);
+      converted += 1;
+    } catch (err) {
+      log.warn(`Umwandlung ${row.mint} fehlgeschlagen: ${(err as Error).message}`);
+      messages.push(`Token konnte nicht umgewandelt werden: ${(err as Error).message}`);
+    }
+  }
+  if (converted > 0) log.success(`${converted} Einzahlung(en) in SOL umgewandelt`);
+  return { converted, messages };
+}
+
+async function sweepEvm(): Promise<{ converted: number; messages: string[] }> {
+  if (!botWallet.unlocked) return { converted: 0, messages: [] };
+  const messages: string[] = [];
+  let converted = 0;
+
+  const snap = await readEvmDeposits();
+  if (snap.nativeBalance <= GAS_RESERVE_ETH) {
+    return { converted: 0, messages: ['Für die Umwandlung fehlt etwas ETH als Gas'] };
+  }
+
+  const account = botWallet.requireAccount();
+  const tokens = acceptedTokens();
+
+  for (const asset of snap.assets) {
+    if (asset.kind === 'native' || asset.balanceUsd < MIN_SWEEP_USD || !asset.address) continue;
+    const meta = tokens.find((t) => t.address.toLowerCase() === asset.address!.toLowerCase());
+    if (!meta) continue;
+
+    try {
+      const client = botWallet.publicClient();
+      const raw = await client.readContract({
+        address: meta.address as Address,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [account.address],
+      });
+      if (raw <= 0n) continue;
+
+      if (meta.kind === 'wrapped') {
+        const hash = await botWallet.walletClient().writeContract({
+          account,
+          chain: botWallet.chain,
+          address: meta.address as Address,
+          abi: WETH_ABI,
+          functionName: 'withdraw',
+          args: [raw],
+        });
+        await client.waitForTransactionReceipt({ hash, timeout: 120_000 });
+        messages.push(`${asset.symbol} entpackt → ${config.chain.nativeSymbol} (${hash.slice(0, 10)}…)`);
+        converted += 1;
+        continue;
+      }
+
+      const quote = await routeSwap({
+        sellToken: meta.address as Address,
+        buyToken: 'native',
+        sellAmount: raw,
+        taker: account.address,
+        slippagePct: 2,
+      });
+      if (quote.spender) {
+        const allowance = await client.readContract({
+          address: meta.address as Address,
+          abi: erc20Abi,
+          functionName: 'allowance',
+          args: [account.address, quote.spender],
+        });
+        if (allowance < raw) {
+          const approveHash = await botWallet.walletClient().writeContract({
+            account,
+            chain: botWallet.chain,
+            address: meta.address as Address,
+            abi: erc20Abi,
+            functionName: 'approve',
+            args: [quote.spender, raw],
+          });
+          await client.waitForTransactionReceipt({ hash: approveHash, timeout: 120_000 });
+        }
+      }
+      const hash = await botWallet.walletClient().sendTransaction({
+        account,
+        chain: botWallet.chain,
+        to: quote.to,
+        data: quote.data,
+        value: quote.value,
+        ...(quote.gasLimit ? { gas: (quote.gasLimit * 130n) / 100n } : {}),
+      });
+      await client.waitForTransactionReceipt({ hash, timeout: 120_000 });
+      messages.push(`${asset.symbol} in ${config.chain.nativeSymbol} getauscht über ${quote.source} (${hash.slice(0, 10)}…)`);
+      converted += 1;
+    } catch (err) {
+      log.warn(`Umwandlung ${asset.symbol} fehlgeschlagen: ${(err as Error).message}`);
+      messages.push(`${asset.symbol} konnte nicht umgewandelt werden: ${(err as Error).message}`);
+    }
+  }
+
+  if (converted > 0) log.success(`${converted} Einzahlung(en) in ${config.chain.nativeSymbol} umgewandelt`);
+  return { converted, messages };
+}
+
 /**
  * Wandelt akzeptierte Einzahlungstokens in den Native-Coin um, mit dem der Bot
  * handelt. WETH wird entpackt statt geswappt (keine Slippage).
  */
 export async function sweepToNative(): Promise<{ converted: number; messages: string[] }> {
-  if (!botWallet.unlocked || sweeping) return { converted: 0, messages: [] };
+  if (!hotWallet.unlocked || sweeping) return { converted: 0, messages: [] };
   sweeping = true;
-  const messages: string[] = [];
-  let converted = 0;
-
   try {
-    const snap = await readDeposits();
-    if (snap.nativeBalance <= GAS_RESERVE_ETH) {
-      return { converted: 0, messages: ['Für die Umwandlung fehlt etwas ETH als Gas'] };
-    }
-
-    const account = botWallet.requireAccount();
-    const tokens = acceptedTokens();
-
-    for (const asset of snap.assets) {
-      if (asset.kind === 'native' || asset.balanceUsd < MIN_SWEEP_USD || !asset.address) continue;
-      const meta = tokens.find((t) => t.address.toLowerCase() === asset.address!.toLowerCase());
-      if (!meta) continue;
-
-      try {
-        const client = botWallet.publicClient();
-        const raw = await client.readContract({
-          address: meta.address,
-          abi: erc20Abi,
-          functionName: 'balanceOf',
-          args: [account.address],
-        });
-        if (raw <= 0n) continue;
-
-        if (meta.kind === 'wrapped') {
-          const hash = await botWallet.walletClient().writeContract({
-            account,
-            chain: botWallet.chain,
-            address: meta.address,
-            abi: WETH_ABI,
-            functionName: 'withdraw',
-            args: [raw],
-          });
-          await client.waitForTransactionReceipt({ hash, timeout: 120_000 });
-          messages.push(`${asset.symbol} entpackt → ${config.chain.nativeSymbol} (${hash.slice(0, 10)}…)`);
-          converted += 1;
-          continue;
-        }
-
-        const quote = await routeSwap({
-          sellToken: meta.address,
-          buyToken: 'native',
-          sellAmount: raw,
-          taker: account.address,
-          slippagePct: 2,
-        });
-        if (quote.spender) {
-          const allowance = await client.readContract({
-            address: meta.address,
-            abi: erc20Abi,
-            functionName: 'allowance',
-            args: [account.address, quote.spender],
-          });
-          if (allowance < raw) {
-            const approveHash = await botWallet.walletClient().writeContract({
-              account,
-              chain: botWallet.chain,
-              address: meta.address,
-              abi: erc20Abi,
-              functionName: 'approve',
-              args: [quote.spender, raw],
-            });
-            await client.waitForTransactionReceipt({ hash: approveHash, timeout: 120_000 });
-          }
-        }
-        const hash = await botWallet.walletClient().sendTransaction({
-          account,
-          chain: botWallet.chain,
-          to: quote.to,
-          data: quote.data,
-          value: quote.value,
-          ...(quote.gasLimit ? { gas: (quote.gasLimit * 130n) / 100n } : {}),
-        });
-        await client.waitForTransactionReceipt({ hash, timeout: 120_000 });
-        messages.push(`${asset.symbol} in ${config.chain.nativeSymbol} getauscht über ${quote.source} (${hash.slice(0, 10)}…)`);
-        converted += 1;
-      } catch (err) {
-        log.warn(`Umwandlung ${asset.symbol} fehlgeschlagen: ${(err as Error).message}`);
-        messages.push(`${asset.symbol} konnte nicht umgewandelt werden: ${(err as Error).message}`);
-      }
-    }
+    if (isSolanaChain()) return await sweepSolana();
+    return await sweepEvm();
   } finally {
     sweeping = false;
   }
-
-  if (converted > 0) log.success(`${converted} Einzahlung(en) in ${config.chain.nativeSymbol} umgewandelt`);
-  return { converted, messages };
 }

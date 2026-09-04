@@ -1,7 +1,8 @@
 import { Router } from 'express';
-import { isAddress, type Address } from 'viem';
+import { isAddress } from 'viem';
+import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { db } from '../store/db.js';
-import { botWallet } from '../chain/wallet.js';
+import { hotWallet, isSolanaChain } from '../chain/hot.js';
 import { engine } from '../trading/engine.js';
 import { portfolio } from '../trading/portfolio.js';
 import { getIntel } from '../intel/index.js';
@@ -9,12 +10,26 @@ import { getCandidates } from '../scanner/index.js';
 import { recentLogs } from '../util/logger.js';
 import { bus } from '../util/bus.js';
 import { fullState, walletState } from './state.js';
-import { sweepToNative } from '../chain/deposits.js';
+import { acceptedTokens, sweepToNative } from '../chain/deposits.js';
+import { nativePriceUsd } from '../chain/prices.js';
+import {
+  TOKEN_PROGRAM_ID,
+  USDC_MINT,
+  USDT_MINT,
+  buildSolTransfer,
+  buildSplTransfer,
+  isSolanaAddress,
+} from '../chain/solana.js';
+import { solanaWallet } from '../chain/solanaWallet.js';
 import type { TradingMode } from '../types.js';
 
 export const router = Router();
 
 const fail = (message: string) => ({ ok: false, message });
+
+function isOwnerAddress(address: string): boolean {
+  return isSolanaChain() ? isSolanaAddress(address) : isAddress(address);
+}
 
 router.get('/state', async (_req, res) => {
   res.json(await fullState());
@@ -65,10 +80,12 @@ router.get('/wallet', async (_req, res) => {
   res.json(await walletState());
 });
 
-/** Verbindet die MetaMask-Adresse des Nutzers als Auszahlungsziel. */
+/** Verbindet Phantom (Solana) oder MetaMask (EVM) als Auszahlungsziel. */
 router.post('/wallet/owner', async (req, res) => {
   const address = String(req.body?.address ?? '');
-  if (!isAddress(address)) return res.status(400).json(fail('Ungültige Adresse'));
+  if (!isOwnerAddress(address)) {
+    return res.status(400).json(fail(isSolanaChain() ? 'Ungültige Solana-Adresse' : 'Ungültige Adresse'));
+  }
   db.update((draft) => {
     draft.wallet.ownerAddress = address;
   });
@@ -87,7 +104,7 @@ router.post('/wallet/disconnect', async (_req, res) => {
 router.post('/wallet/create', async (req, res) => {
   try {
     const passphrase = String(req.body?.passphrase ?? '');
-    const address = botWallet.create(passphrase);
+    const address = hotWallet.create(passphrase);
     const state = await walletState();
     bus.emitEvent('wallet', state);
     res.json({ ok: true, message: 'Bot-Wallet erstellt', address, wallet: state });
@@ -98,7 +115,7 @@ router.post('/wallet/create', async (req, res) => {
 
 router.post('/wallet/unlock', async (req, res) => {
   try {
-    botWallet.unlock(String(req.body?.passphrase ?? ''));
+    hotWallet.unlock(String(req.body?.passphrase ?? ''));
     const state = await walletState();
     bus.emitEvent('wallet', state);
     res.json({ ok: true, message: 'Bot-Wallet entsperrt', wallet: state });
@@ -108,20 +125,22 @@ router.post('/wallet/unlock', async (req, res) => {
 });
 
 router.post('/wallet/lock', async (_req, res) => {
-  botWallet.lock();
+  hotWallet.lock();
   if (engine.mode === 'live') engine.stop('Wallet gesperrt');
   res.json({ ok: true, message: 'Bot-Wallet gesperrt', wallet: await walletState() });
 });
 
-/** Zahlt das gesamte Guthaben an die verbundene MetaMask-Adresse aus. */
+/** Zahlt das gesamte Guthaben an die verbundene Owner-Adresse aus. */
 router.post('/wallet/withdraw', async (req, res) => {
   try {
     const target = (req.body?.to as string) || db.data.wallet.ownerAddress;
-    if (!target || !isAddress(target)) return res.status(400).json(fail('Keine gültige Zieladresse'));
+    if (!target || !isOwnerAddress(target)) {
+      return res.status(400).json(fail(isSolanaChain() ? 'Keine gültige Solana-Adresse' : 'Keine gültige Zieladresse'));
+    }
     if (portfolio.openPositions('live').length > 0) {
       return res.status(400).json(fail('Es sind noch Live-Positionen offen – bitte zuerst schließen'));
     }
-    const hash = await botWallet.withdrawAll(target as Address);
+    const hash = await hotWallet.withdrawAll(target);
     res.json({ ok: true, message: 'Auszahlung gesendet', txHash: hash });
   } catch (err) {
     res.status(400).json(fail((err as Error).message));
@@ -131,7 +150,7 @@ router.post('/wallet/withdraw', async (req, res) => {
 /** Notfall-Export: der Nutzer behaelt jederzeit die volle Kontrolle. */
 router.post('/wallet/export', (req, res) => {
   try {
-    const key = botWallet.exportPrivateKey(String(req.body?.passphrase ?? ''));
+    const key = hotWallet.exportSecret(String(req.body?.passphrase ?? ''));
     res.json({ ok: true, privateKey: key });
   } catch (err) {
     res.status(400).json(fail((err as Error).message));
@@ -148,6 +167,54 @@ router.post('/wallet/sweep', async (_req, res) => {
         ? `${result.converted} Token-Guthaben in ${state.nativeSymbol} umgewandelt`
         : result.messages[0] ?? 'Nichts umzuwandeln';
     res.json({ ok: true, message, wallet: state, details: result.messages });
+  } catch (err) {
+    res.status(400).json(fail((err as Error).message));
+  }
+});
+
+/**
+ * Baut eine unsignierte Solana-Transaktion, mit der Phantom SOL/USDC/USDT
+ * an das Bot-Wallet schickt. Phantom signiert im Browser.
+ */
+router.post('/wallet/prepare-deposit', async (req, res) => {
+  try {
+    if (!isSolanaChain()) return res.status(400).json(fail('Einzahlungs-Transaktionen gibt es nur auf Solana'));
+    const from = String(req.body?.from ?? '');
+    const symbol = String(req.body?.symbol ?? 'SOL').toUpperCase();
+    const amountEur = Number(req.body?.amountEur ?? 0);
+    if (!isSolanaAddress(from)) return res.status(400).json(fail('Ungültige Phantom-Adresse'));
+    if (!Number.isFinite(amountEur) || amountEur <= 0) return res.status(400).json(fail('Ungültiger Betrag'));
+    const bot = solanaWallet.address;
+    if (!bot) return res.status(400).json(fail('Zuerst ein Bot-Wallet erstellen'));
+
+    const fromKey = new PublicKey(from);
+    const toKey = new PublicKey(bot);
+    let tx;
+    if (symbol === 'SOL') {
+      const solPrice = await nativePriceUsd('SOL');
+      if (solPrice <= 0) return res.status(400).json(fail('SOL-Preis nicht verfügbar'));
+      const lamports = BigInt(Math.round((amountEur / solPrice) * LAMPORTS_PER_SOL));
+      if (lamports <= 0n) return res.status(400).json(fail('Betrag zu klein'));
+      tx = await buildSolTransfer(fromKey, toKey, lamports);
+    } else {
+      const meta = acceptedTokens().find((t) => t.symbol === symbol);
+      if (!meta) return res.status(400).json(fail('Dieses Token wird nicht akzeptiert'));
+      const raw = BigInt(Math.round(amountEur * 10 ** meta.decimals));
+      if (raw <= 0n) return res.status(400).json(fail('Betrag zu klein'));
+      const mint = symbol === 'USDT' ? USDT_MINT : USDC_MINT;
+      tx = await buildSplTransfer({
+        from: fromKey,
+        to: toKey,
+        mint: new PublicKey(mint),
+        amount: raw,
+        programId: TOKEN_PROGRAM_ID,
+      });
+    }
+
+    res.json({
+      ok: true,
+      transaction: Buffer.from(tx.serialize({ requireAllSignatures: false, verifySignatures: false })).toString('base64'),
+    });
   } catch (err) {
     res.status(400).json(fail((err as Error).message));
   }

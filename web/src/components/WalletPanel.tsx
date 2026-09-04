@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Transaction } from '@solana/web3.js';
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -17,13 +18,35 @@ import { api } from '../lib/api';
 import { shortAddress, usd } from '../lib/format';
 import type { DepositAsset, WalletState } from '../lib/types';
 
+interface PhantomProvider {
+  isPhantom?: boolean;
+  publicKey?: { toString(): string };
+  connect: () => Promise<{ publicKey: { toString(): string } }>;
+  signAndSendTransaction: (tx: Transaction) => Promise<{ signature: string }>;
+}
+
 declare global {
   interface Window {
     ethereum?: {
       request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
       isMetaMask?: boolean;
     };
+    solana?: PhantomProvider;
+    phantom?: { solana?: PhantomProvider };
   }
+}
+
+function getPhantom(): PhantomProvider | null {
+  const provider = window.phantom?.solana ?? window.solana;
+  if (!provider?.isPhantom) return null;
+  return provider;
+}
+
+function decodeBase64(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 
 function erc20TransferData(to: string, amount: bigint): string {
@@ -59,11 +82,21 @@ export function WalletPanel({
   onNotify: (message: string, ok?: boolean) => void;
   onRefresh: () => Promise<void>;
 }) {
+  const solana = wallet.family === 'solana';
+  const walletName = solana ? 'Phantom' : 'MetaMask';
   const [busy, setBusy] = useState<string | null>(null);
   const [passphrase, setPassphrase] = useState('');
   const [copied, setCopied] = useState(false);
   const [depositEur, setDepositEur] = useState('10');
-  const [depositSymbol, setDepositSymbol] = useState('ETH');
+  const [depositSymbol, setDepositSymbol] = useState(wallet.nativeSymbol || (solana ? 'SOL' : 'ETH'));
+
+  useEffect(() => {
+    setDepositSymbol((prev) => {
+      const assets = wallet.assets ?? [];
+      if (assets.some((asset) => asset.symbol === prev)) return prev;
+      return wallet.nativeSymbol;
+    });
+  }, [wallet.nativeSymbol, wallet.assets]);
 
   const run = async (key: string, action: () => Promise<{ message: string }>) => {
     setBusy(key);
@@ -78,7 +111,28 @@ export function WalletPanel({
     }
   };
 
-  const connectMetaMask = async () => {
+  const connectOwner = async () => {
+    if (solana) {
+      const phantom = getPhantom();
+      if (!phantom) {
+        onNotify('Phantom wurde nicht gefunden. Bitte Erweiterung installieren.', false);
+        return;
+      }
+      setBusy('connect');
+      try {
+        const session = await phantom.connect();
+        const address = session.publicKey.toString();
+        const result = await api.connectOwner(address);
+        onNotify(result.message, true);
+        await onRefresh();
+      } catch (err) {
+        onNotify((err as Error).message, false);
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
+
     if (!window.ethereum) {
       onNotify('MetaMask wurde nicht gefunden. Bitte Erweiterung installieren.', false);
       return;
@@ -101,7 +155,12 @@ export function WalletPanel({
     if (!wallet.botAddress) return;
     await navigator.clipboard.writeText(wallet.botAddress);
     setCopied(true);
-    onNotify('Adresse kopiert – jetzt ETH auf Base dorthin senden', true);
+    onNotify(
+      solana
+        ? 'Adresse kopiert – jetzt SOL oder USDC auf Solana dorthin senden'
+        : 'Adresse kopiert – jetzt ETH auf Base dorthin senden',
+      true,
+    );
     setTimeout(() => setCopied(false), 1800);
   };
 
@@ -122,12 +181,7 @@ export function WalletPanel({
     }
   };
 
-  /** Zahlt aus dem verbundenen MetaMask direkt auf das Bot-Wallet ein. */
-  const depositFromMetaMask = async () => {
-    if (!window.ethereum) {
-      onNotify('MetaMask nicht gefunden', false);
-      return;
-    }
+  const depositFromOwner = async () => {
     if (!wallet.botAddress) {
       onNotify('Zuerst ein Bot-Wallet erstellen', false);
       return;
@@ -135,6 +189,34 @@ export function WalletPanel({
     const eur = Number(depositEur.replace(',', '.'));
     if (!Number.isFinite(eur) || eur <= 0) {
       onNotify('Ungültiger Betrag', false);
+      return;
+    }
+
+    if (solana) {
+      const phantom = getPhantom();
+      if (!phantom) {
+        onNotify('Phantom nicht gefunden', false);
+        return;
+      }
+      setBusy('deposit');
+      try {
+        const session = await phantom.connect();
+        const from = session.publicKey.toString();
+        const prepared = await api.prepareDeposit(from, depositSymbol, eur);
+        const tx = Transaction.from(decodeBase64(prepared.transaction));
+        const { signature } = await phantom.signAndSendTransaction(tx);
+        onNotify(`${depositSymbol}-Einzahlung gesendet – ${signature.slice(0, 10)}…`, true);
+        await onRefresh();
+      } catch (err) {
+        onNotify((err as Error).message, false);
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
+
+    if (!window.ethereum) {
+      onNotify('MetaMask nicht gefunden', false);
       return;
     }
     const assets = wallet.assets ?? [];
@@ -185,7 +267,8 @@ export function WalletPanel({
   };
 
   const assets = wallet.assets ?? [];
-  const deposited = (wallet.totalUsd ?? 0) >= 1 || wallet.nativeBalance > 0.00025;
+  const gasDust = solana ? 0.002 : 0.00025;
+  const deposited = (wallet.totalUsd ?? 0) >= 1 || wallet.nativeBalance > gasDust;
   const steps = [
     { done: wallet.hasKeystore, label: 'Bot-Wallet erstellt' },
     { done: wallet.unlocked, label: 'Wallet entsperrt' },
@@ -206,13 +289,17 @@ export function WalletPanel({
       symbol: wallet.nativeSymbol,
       name: wallet.nativeSymbol,
       address: null,
-      decimals: 18,
+      decimals: solana ? 9 : 18,
       kind: 'native',
       balance: wallet.nativeBalance,
       balanceUsd: wallet.nativeBalanceUsd,
       priceUsd: wallet.nativePriceUsd,
     });
   }
+
+  const intro = solana
+    ? 'Phantom kann nicht vollautomatisch handeln, deshalb bekommt der Bot ein eigenes Solana-Wallet. Du zahlst dort SOL oder USDC auf Solana ein – der Bot wandelt USDC selbst in SOL um und tradet Memecoins über Jupiter. Native Bitcoin oder ETH-Mainnet kommen an dieser Adresse nicht an.'
+    : `MetaMask kann nicht vollautomatisch handeln, deshalb bekommt der Bot ein eigenes Wallet. Du kannst dort auf ${wallet.chain} ETH, USDC, USDT, DAI oder cbBTC einzahlen – der Bot wandelt andere Coins selbst in ETH um. Native Bitcoin oder Solana kommen an dieser Adresse nicht an.`;
 
   return (
     <Card
@@ -241,10 +328,7 @@ export function WalletPanel({
       </div>
 
       <p className="text-[11px] leading-relaxed text-slate-500">
-        MetaMask kann nicht vollautomatisch handeln, deshalb bekommt der Bot ein eigenes Wallet. Du kannst dort auf{' '}
-        <strong className="text-slate-300">{wallet.chain}</strong> ETH, USDC, USDT, DAI oder cbBTC (Bitcoin auf Base)
-        einzahlen – der Bot wandelt andere Coins selbst in ETH um und tradet damit. Native Bitcoin oder Solana kommen
-        an dieser Adresse <strong className="text-slate-300">nicht</strong> an.
+        {intro} Live-Chain ist <strong className="text-slate-300">{wallet.chain}</strong>.
       </p>
 
       <details className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2">
@@ -261,7 +345,7 @@ export function WalletPanel({
       <div>
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            Auszahlungsziel (MetaMask)
+            Auszahlungsziel ({walletName})
           </span>
           {wallet.ownerAddress && <Chip tone="emerald">verbunden</Chip>}
         </div>
@@ -280,11 +364,11 @@ export function WalletPanel({
           <button
             type="button"
             className="btn-ghost mt-2 w-full"
-            onClick={() => void connectMetaMask()}
+            onClick={() => void connectOwner()}
             disabled={busy === 'connect'}
           >
             {busy === 'connect' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-            MetaMask verbinden
+            {walletName} verbinden
           </button>
         )}
       </div>
@@ -373,9 +457,19 @@ export function WalletPanel({
                 Einzahlen auf {wallet.chain}
               </div>
               <p className="text-[10px] leading-relaxed text-slate-400">
-                Gleiche Adresse für ETH, USDC, USDT, DAI und cbBTC. Netzwerk muss{' '}
-                <span className="font-semibold text-slate-200">{wallet.chain}</span> sein – nicht Bitcoin-Mainnet, nicht
-                Ethereum-Mainnet, nicht Solana.
+                {solana ? (
+                  <>
+                    Gleiche Adresse für SOL, USDC und USDT. Netzwerk muss{' '}
+                    <span className="font-semibold text-slate-200">Solana</span> sein – nicht Ethereum, nicht Base,
+                    nicht Bitcoin-Mainnet.
+                  </>
+                ) : (
+                  <>
+                    Gleiche Adresse für ETH, USDC, USDT, DAI und cbBTC. Netzwerk muss{' '}
+                    <span className="font-semibold text-slate-200">{wallet.chain}</span> sein – nicht Bitcoin-Mainnet,
+                    nicht Ethereum-Mainnet, nicht Solana.
+                  </>
+                )}
               </p>
               <code className="num block break-all rounded-lg bg-black/40 px-2 py-1.5 text-[10px] text-emerald-200">
                 {wallet.botAddress}
@@ -429,10 +523,10 @@ export function WalletPanel({
                 type="button"
                 className="btn-primary w-full"
                 disabled={busy === 'deposit' || !wallet.botAddress}
-                onClick={() => void depositFromMetaMask()}
+                onClick={() => void depositFromOwner()}
               >
                 {busy === 'deposit' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-                {depositSymbol} aus MetaMask senden
+                {depositSymbol} aus {walletName} senden
               </button>
               {previewAmount > 0 && selectedAsset && (
                 <p className="text-[10px] text-slate-500">
@@ -459,7 +553,7 @@ export function WalletPanel({
                 className="btn-ghost flex-1"
                 disabled={!wallet.ownerAddress || !wallet.unlocked || busy === 'withdraw'}
                 onClick={() => void run('withdraw', () => api.withdraw())}
-                title={!wallet.ownerAddress ? 'Zuerst MetaMask verbinden' : 'Gesamtes Guthaben auszahlen'}
+                title={!wallet.ownerAddress ? `Zuerst ${walletName} verbinden` : 'Gesamtes Guthaben auszahlen'}
               >
                 {busy === 'withdraw' ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

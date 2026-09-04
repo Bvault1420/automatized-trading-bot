@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { db } from '../store/db.js';
-import { botWallet } from '../chain/wallet.js';
+import { hotWallet } from '../chain/hot.js';
 import { readDeposits } from '../chain/deposits.js';
 import { getIntel } from '../intel/index.js';
 import { getCandidates } from '../scanner/index.js';
@@ -17,8 +17,9 @@ export async function walletState(): Promise<WalletState> {
   const [snap, blockers] = await Promise.all([readDeposits(), liveExecutor.blockers()]);
 
   return {
+    family: config.chain.family,
     ownerAddress: db.data.wallet.ownerAddress,
-    botAddress: botWallet.address,
+    botAddress: hotWallet.address,
     chain: config.chain.name,
     chainId: config.chain.id,
     explorer: config.chain.explorer,
@@ -26,8 +27,8 @@ export async function walletState(): Promise<WalletState> {
     nativeBalance: round(snap.nativeBalance, 8),
     nativeBalanceUsd: round(snap.nativeBalanceUsd, 2),
     nativePriceUsd: round(snap.nativePriceUsd, 2),
-    hasKeystore: botWallet.hasKeystore,
-    unlocked: botWallet.unlocked,
+    hasKeystore: hotWallet.hasKeystore,
+    unlocked: hotWallet.unlocked,
     liveReady: blockers.length === 0,
     liveBlockers: blockers,
     assets: snap.assets,
@@ -57,6 +58,7 @@ export async function fullState() {
     meta: {
       chain: config.chain.name,
       chainId: config.chain.id,
+      family: config.chain.family,
       nativeSymbol: config.chain.nativeSymbol,
       explorer: config.chain.explorer,
       scanChains: db.data.settings.scanChains,

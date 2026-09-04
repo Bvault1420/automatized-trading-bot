@@ -76,13 +76,13 @@ export default function App() {
           document.getElementById('wallet-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           return;
         }
-        if (!window.confirm('Echtgeld-Modus aktivieren? Der Bot handelt dann mit echtem Kapital auf Base.')) {
+        if (!window.confirm(`Echtgeld-Modus aktivieren? Der Bot handelt dann mit echtem Kapital auf ${state.wallet.chain}.`)) {
           return;
         }
       }
       void action(() => api.setMode(mode));
     },
-    [action, notify, state?.wallet.liveReady, state?.wallet.liveBlockers],
+    [action, notify, state?.wallet.liveReady, state?.wallet.liveBlockers, state?.wallet.chain],
   );
 
   useEffect(() => {

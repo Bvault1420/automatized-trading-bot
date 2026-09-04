@@ -13,5 +13,11 @@ export default defineConfig({
       '/ws': { target: 'ws://localhost:8787', ws: true },
     },
   },
+  define: {
+    global: 'globalThis',
+  },
+  optimizeDeps: {
+    include: ['@solana/web3.js'],
+  },
   build: { outDir: 'dist', sourcemap: false },
 });
