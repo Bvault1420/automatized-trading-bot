@@ -1,6 +1,6 @@
 import { bus } from '../util/bus.js';
 import { createLogger } from '../util/logger.js';
-import { bell, clamp, round } from '../util/num.js';
+import { bell, clamp, round, saturate } from '../util/num.js';
 import { fetchFearGreed } from './fearGreed.js';
 import { fetchMacro } from './macro.js';
 import { fetchNews } from './news.js';
@@ -55,8 +55,10 @@ function signal(
 function fearGreedSignal(value: number, previous: number): number {
   const zone = bell(value, 68, 26) * 2 - 1;
   const euphoriaPenalty = value > 88 ? -0.5 : 0;
-  const momentum = clamp((value - previous) / 20, -0.4, 0.4);
-  return clamp(zone + euphoriaPenalty + momentum, -1, 1);
+  const momentum = clamp((value - previous) / 15, -1, 1);
+  // Gewichtete Mischung statt Addition: sonst erreicht schon die Zone allein
+  // den Anschlag und die Richtungsaenderung geht verloren.
+  return clamp(0.8 * zone + 0.2 * momentum + euphoriaPenalty, -1, 1);
 }
 
 function buildNarrative(intel: MarketIntel): string {
@@ -139,7 +141,9 @@ export async function refreshIntel(): Promise<MarketIntel> {
       signal(
         'market_breadth',
         'Gesamtmarkt',
-        clamp(macro.marketCapChange24h / 4, -1, 1),
+        // Tagesbewegungen von 4 % sind normal – ein engerer Nenner wuerde das
+        // Signal fast dauerhaft am Anschlag halten.
+        clamp(macro.marketCapChange24h / 7, -1, 1),
         0.75,
         `Marktkapitalisierung ${macro.marketCapChange24h.toFixed(2)}% (24h) · BTC-Dominanz ${macro.btcDominance.toFixed(1)}%`,
         'CoinGecko',
@@ -201,7 +205,9 @@ export async function refreshIntel(): Promise<MarketIntel> {
     signal(
       'meme_buzz',
       'Memecoin-Aufmerksamkeit',
-      clamp(memeBuzz / 8, 0, 1) * 2 - 1,
+      // Da ein eigener Memecoin-Newsfeed mitlaeuft, liegt die Grundlast bei rund
+      // einem Dutzend Erwaehnungen – dort liegt der neutrale Punkt.
+      saturate(memeBuzz, 12) * 2 - 1,
       0.5,
       memeBuzz > 0
         ? `${memeBuzz} Meme-Erwähnungen: ${news.memeTerms.map((t) => t.term).slice(0, 4).join(', ')}`
