@@ -1,6 +1,7 @@
 import { getJson } from '../util/http.js';
 import { createLogger } from '../util/logger.js';
 import { safeNumber } from '../util/num.js';
+import { fetchFreshTokenAddresses } from '../intel/fresh.js';
 import type { PairSnapshot, TokenCandidate } from '../types.js';
 
 const log = createLogger('scanner');
@@ -39,7 +40,7 @@ const CHAIN_QUERIES: Record<string, string[]> = {
   base: ['WETH base', 'USDC base'],
   ethereum: ['WETH ethereum'],
   bsc: ['WBNB bsc'],
-  solana: ['SOL raydium', 'SOL pumpswap', 'SOL meteora', 'SOL orca'],
+  solana: ['SOL raydium', 'SOL pumpswap', 'SOL meteora', 'SOL orca', 'pump'],
   arbitrum: ['WETH arbitrum'],
 };
 
@@ -141,18 +142,30 @@ async function fetchBoosted(chains: string[]): Promise<Map<string, number>> {
  * Token nur das Paar mit der hoechsten Liquiditaet (dort ist die Slippage am
  * geringsten).
  */
-export async function discoverCandidates(chains: string[], minLiquidityUsd: number): Promise<TokenCandidate[]> {
-  const boosts = await fetchBoosted(chains).catch(() => new Map<string, number>());
+export async function discoverCandidates(
+  chains: string[],
+  minLiquidityUsd: number,
+  extraQueries: string[] = [],
+): Promise<TokenCandidate[]> {
+  const [boosts, freshAddresses] = await Promise.all([
+    fetchBoosted(chains).catch(() => new Map<string, number>()),
+    fetchFreshTokenAddresses(chains).catch(() => new Map<string, string[]>()),
+  ]);
 
   const tasks: Promise<DexPair[]>[] = [];
   for (const chain of chains) {
     for (const query of CHAIN_QUERIES[chain] ?? [chain]) {
       tasks.push(searchPairs(query).catch(() => []));
     }
-    const addresses = [...boosts.keys()]
-      .filter((key) => key.startsWith(`${chain}:`))
-      .map((key) => key.slice(chain.length + 1))
-      .slice(0, 60);
+    for (const term of extraQueries.slice(0, 6)) {
+      tasks.push(searchPairs(`${term} ${chain}`).catch(() => []));
+    }
+    const addresses = [
+      ...[...boosts.keys()]
+        .filter((key) => key.startsWith(`${chain}:`))
+        .map((key) => key.slice(chain.length + 1)),
+      ...(freshAddresses.get(chain) ?? []),
+    ].slice(0, 80);
     if (addresses.length > 0) tasks.push(resolveTokens(chain, addresses).catch(() => []));
   }
 

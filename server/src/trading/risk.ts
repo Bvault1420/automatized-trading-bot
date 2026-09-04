@@ -20,6 +20,12 @@ export interface RiskVerdict {
 }
 
 const MIN_TRADE_USD = 1;
+/** Unter diesem Equity wird nur 1 Ticket mit dem Grossteil des Bargelds gesetzt. */
+const MICRO_EQUITY_USD = 8;
+
+export function isMicroAccount(equityUsd: number): boolean {
+  return equityUsd > 0 && equityUsd <= MICRO_EQUITY_USD;
+}
 
 /** Globale Schutzschalter – gelten unabhaengig vom einzelnen Kandidaten. */
 export function checkGlobalRisk(ctx: RiskContext): RiskVerdict {
@@ -52,7 +58,11 @@ export function checkGlobalRisk(ctx: RiskContext): RiskVerdict {
   }
 
   const openCount = portfolio.openPositions(settings.tradingMode).length;
-  const maxOpen = ctx.intel.regime === 'risk-off' ? Math.min(1, settings.maxOpenPositions) : settings.maxOpenPositions;
+  const maxOpen = isMicroAccount(state.equityUsd)
+    ? 1
+    : ctx.intel.regime === 'risk-off'
+      ? Math.min(1, settings.maxOpenPositions)
+      : settings.maxOpenPositions;
   if (openCount >= maxOpen) {
     return { allowed: false, reason: `Maximale Positionsanzahl erreicht (${openCount}/${maxOpen})` };
   }
@@ -103,14 +113,18 @@ export function checkCandidate(candidate: ScoredCandidate, ctx: RiskContext): Ri
  */
 export function positionSizeUsd(candidate: ScoredCandidate, ctx: RiskContext): number {
   const { settings, state } = ctx;
-  const base = state.equityUsd * (settings.riskPerTradePct / 100);
+  const liquidityCap = candidate.candidate.liquidityUsd * 0.0015;
 
+  if (isMicroAccount(state.equityUsd)) {
+    const size = Math.min(ctx.availableCashUsd * 0.82, state.equityUsd * 0.85, liquidityCap);
+    return size >= MIN_TRADE_USD ? Number(size.toFixed(4)) : 0;
+  }
+
+  const base = state.equityUsd * (settings.riskPerTradePct / 100);
   const conviction = clamp(0.7 + (candidate.score - 64) / 55, 0.55, 1.15);
   const regimeFactor = 0.62 + 0.5 * ctx.intel.riskAppetite;
   const lossFactor =
     ctx.consecutiveLosses >= 3 ? 0.45 : ctx.consecutiveLosses === 2 ? 0.6 : ctx.consecutiveLosses === 1 ? 0.78 : 1;
-
-  const liquidityCap = candidate.candidate.liquidityUsd * 0.0015;
 
   const remainingSlots = Math.max(1, settings.maxOpenPositions - portfolio.openPositions(settings.tradingMode).length);
   const cashCap = ctx.availableCashUsd * (remainingSlots === 1 ? 0.85 : 0.5);

@@ -9,6 +9,7 @@ import type { ScoredCandidate, SecurityReport } from '../types.js';
 const log = createLogger('scanner');
 
 let latest: ScoredCandidate[] = [];
+let lastStats = { discovered: 0, scored: 0, tradable: 0, scannedAt: 0 };
 
 export interface ScanOptions extends Omit<ScoringContext, 'blacklist' | 'cooldowns'> {
   chains: string[];
@@ -25,7 +26,8 @@ export interface ScanOptions extends Omit<ScoringContext, 'blacklist' | 'cooldow
  */
 export async function runScan(options: ScanOptions): Promise<ScoredCandidate[]> {
   const started = Date.now();
-  const candidates = await discoverCandidates(options.chains, options.minLiquidityUsd);
+  const hotQueries = options.intel.social.trendingTerms.slice(0, 6).map((t) => t.term);
+  const candidates = await discoverCandidates(options.chains, options.minLiquidityUsd, hotQueries);
 
   if (candidates.length === 0) {
     log.warn('Keine Kandidaten gefunden – Datenquelle möglicherweise nicht erreichbar');
@@ -83,6 +85,7 @@ export async function runScan(options: ScanOptions): Promise<ScoredCandidate[]> 
   bus.emitEvent('candidates', latest);
 
   const tradable = latest.filter((c) => c.tradable).length;
+  lastStats = { discovered: candidates.length, scored: latest.length, tradable, scannedAt: Date.now() };
   log.info(
     `Scan abgeschlossen: ${candidates.length} Paare → ${latest.length} bewertet, ${tradable} handelbar (${Date.now() - started} ms)`,
   );
@@ -91,4 +94,8 @@ export async function runScan(options: ScanOptions): Promise<ScoredCandidate[]> 
 
 export function getCandidates(): ScoredCandidate[] {
   return latest;
+}
+
+export function getScanStats(): typeof lastStats {
+  return lastStats;
 }

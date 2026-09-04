@@ -17,7 +17,7 @@ export const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC
 export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 
 /** Reserve in SOL, damit Jupiter-Priority-Fees und Exits noch durchgehen. */
-export const GAS_RESERVE_SOL = 0.015;
+export const GAS_RESERVE_SOL = 0.008;
 
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 

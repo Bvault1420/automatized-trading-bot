@@ -43,7 +43,12 @@ export interface MarketIntel {
     sol: { price: number; change24h: number; change7d: number } | null;
   } | null;
   news: { sentiment: number; bullishCount: number; bearishCount: number; items: NewsItem[] };
-  social: { heat: number; trendingTerms: { term: string; mentions: number }[] };
+  social: {
+    heat: number;
+    trendingTerms: { term: string; mentions: number }[];
+    freshPosts: number;
+    freshWindowMinutes: number;
+  };
   narrative: string;
 }
 
@@ -253,5 +258,6 @@ export interface FullState {
     nativeSymbol: string;
     explorer: string;
     scanChains: string[];
+    scanner?: { discovered: number; scored: number; tradable: number; scannedAt: number };
   };
 }

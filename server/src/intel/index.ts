@@ -5,6 +5,7 @@ import { fetchFearGreed } from './fearGreed.js';
 import { fetchMacro } from './macro.js';
 import { fetchNews } from './news.js';
 import { fetchSocial } from './social.js';
+import { fetchFresh } from './fresh.js';
 import type { IntelSignal, MarketIntel } from '../types.js';
 
 const log = createLogger('intel');
@@ -20,9 +21,24 @@ function emptyIntel(): MarketIntel {
     fearGreed: null,
     macro: null,
     news: { sentiment: 0, bullishCount: 0, bearishCount: 0, items: [] },
-    social: { heat: 0, trendingTerms: [] },
+    social: { heat: 0.5, trendingTerms: [], freshPosts: 0, freshWindowMinutes: 30 },
     narrative: 'Marktdaten werden geladen …',
   };
+}
+
+function mergeTerms(
+  a: { term: string; mentions: number }[],
+  b: { term: string; mentions: number }[],
+): { term: string; mentions: number }[] {
+  const map = new Map<string, number>();
+  for (const item of [...a, ...b]) {
+    const key = item.term.toUpperCase();
+    map.set(key, (map.get(key) ?? 0) + item.mentions);
+  }
+  return [...map.entries()]
+    .map(([term, mentions]) => ({ term, mentions }))
+    .sort((x, y) => y.mentions - x.mentions)
+    .slice(0, 16);
 }
 
 function signal(
@@ -80,6 +96,9 @@ function buildNarrative(intel: MarketIntel): string {
     intel.news.sentiment > 0.15 ? 'positiv' : intel.news.sentiment < -0.15 ? 'negativ' : 'neutral';
   parts.push(`News ${newsWord} (${intel.news.bullishCount}↑ / ${intel.news.bearishCount}↓)`);
   parts.push(`Spekulations-Hitze ${Math.round(intel.social.heat * 100)}%`);
+  if (intel.social.freshPosts > 0) {
+    parts.push(`${intel.social.freshPosts} Retail-Posts in ${intel.social.freshWindowMinutes} Min.`);
+  }
 
   const verdict =
     intel.regime === 'risk-on'
@@ -93,7 +112,7 @@ function buildNarrative(intel: MarketIntel): string {
 
 /** Holt alle Quellen und verdichtet sie zu einem Risikoappetit (0..1). */
 export async function refreshIntel(): Promise<MarketIntel> {
-  const [fearGreed, macro, news, social] = await Promise.all([
+  const [fearGreed, macro, news, social, fresh] = await Promise.all([
     fetchFearGreed().catch(() => null),
     fetchMacro().catch(() => null),
     fetchNews().catch(() => ({ sentiment: 0, bullishCount: 0, bearishCount: 0, items: [], memeTerms: [] })),
@@ -103,6 +122,14 @@ export async function refreshIntel(): Promise<MarketIntel> {
       smallCapShare: 0,
       trendingAvgChange24h: 0,
       boostVolume: 0,
+      detail: 'nicht verfügbar',
+    })),
+    fetchFresh().catch(() => ({
+      posts: [],
+      mentions: [],
+      freshCount: 0,
+      windowMinutes: 30 as const,
+      heat: 0,
       detail: 'nicht verfügbar',
     })),
   ]);
@@ -189,14 +216,26 @@ export async function refreshIntel(): Promise<MarketIntel> {
     ),
   );
 
+  const socialHeat = clamp(0.55 * social.heat + 0.45 * fresh.heat, 0, 1);
   signals.push(
     signal(
       'social',
       'Spekulations-Hitze',
-      social.heat * 2 - 1,
-      0.6,
-      social.detail,
-      'CoinGecko Trending, DexScreener Boosts',
+      socialHeat * 2 - 1,
+      0.65,
+      `${social.detail} · ${fresh.detail}`,
+      'CoinGecko, DexScreener, Reddit, Pump.fun-Profile',
+    ),
+  );
+
+  signals.push(
+    signal(
+      'fresh_tape',
+      'Frische Retail-Posts',
+      fresh.freshCount > 0 ? saturate(fresh.freshCount, 18) * 2 - 1 : 0,
+      fresh.freshCount > 5 ? 0.7 : 0.45,
+      fresh.detail,
+      'Reddit New, DexScreener Profile (Minuten)',
     ),
   );
 
@@ -243,9 +282,16 @@ export async function refreshIntel(): Promise<MarketIntel> {
       sentiment: news.sentiment,
       bullishCount: news.bullishCount,
       bearishCount: news.bearishCount,
-      items: news.items.slice(0, 25),
+      items: [...fresh.posts, ...news.items]
+        .sort((a, b) => b.publishedAt - a.publishedAt)
+        .slice(0, 40),
     },
-    social: { heat: social.heat, trendingTerms: social.trendingTerms },
+    social: {
+      heat: socialHeat,
+      trendingTerms: mergeTerms(social.trendingTerms, fresh.mentions),
+      freshPosts: fresh.freshCount,
+      freshWindowMinutes: fresh.windowMinutes,
+    },
     narrative: '',
   };
   intel.narrative = buildNarrative(intel);

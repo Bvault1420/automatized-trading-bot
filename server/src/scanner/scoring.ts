@@ -1,4 +1,5 @@
 import { bell, clamp, normalize, saturate } from '../util/num.js';
+import { mentionBoost } from '../intel/fresh.js';
 import type { MarketIntel, ScoreBreakdown, ScoredCandidate, SecurityReport, TokenCandidate } from '../types.js';
 
 export interface ScoringContext {
@@ -176,13 +177,22 @@ function structureScore(c: TokenCandidate): { value: number; detail: string } {
   };
 }
 
-function hypeScore(c: TokenCandidate): { value: number; detail: string } {
-  // Boosts sind ein zweischneidiges Schwert: Sichtbarkeit ja, oft Exit-Liquidität.
+function hypeScore(c: TokenCandidate, intel: MarketIntel): { value: number; detail: string } {
   const raw = saturate(c.boosts, 180);
-  const value = c.boosts > 250 ? raw * 0.55 : raw;
+  const paid = c.boosts > 250 ? raw * 0.55 : raw;
+  const mentions = intel.social.trendingTerms.map((t) => ({
+    term: t.term,
+    mentions: t.mentions,
+    newestAgeMin: 12,
+  }));
+  const tape = mentionBoost(c.symbol, mentions);
+  const value = clamp(paid * 0.65 + tape * 2.2, 0, 1);
+  const parts: string[] = [];
+  if (c.boosts > 0) parts.push(`${Math.round(c.boosts)} DexScreener-Boosts`);
+  if (tape > 0) parts.push(`frisch erwähnt ($${c.symbol.toUpperCase()})`);
   return {
     value,
-    detail: c.boosts > 0 ? `${Math.round(c.boosts)} DexScreener-Boosts aktiv` : 'Keine bezahlten Boosts',
+    detail: parts.length > 0 ? parts.join(' · ') : 'Keine frische Retail-Erwähnung',
   };
 }
 
@@ -222,7 +232,7 @@ export function scoreCandidate(
     age: ageScore(candidate),
     size: sizeScore(candidate),
     structure: structureScore(candidate),
-    hype: hypeScore(candidate),
+    hype: hypeScore(candidate, ctx.intel),
   };
 
   const labels: Record<keyof typeof WEIGHTS, string> = {

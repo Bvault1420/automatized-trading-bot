@@ -12,7 +12,7 @@ function intel(partial: Partial<MarketIntel> = {}): MarketIntel {
     fearGreed: { value: 62, classification: 'Greed', previous: 58 },
     macro: null,
     news: { sentiment: 0.1, bullishCount: 4, bearishCount: 2, items: [] },
-    social: { heat: 0.5, trendingTerms: [] },
+    social: { heat: 0.5, trendingTerms: [], freshPosts: 0, freshWindowMinutes: 30 },
     narrative: 'test',
     ...partial,
   };

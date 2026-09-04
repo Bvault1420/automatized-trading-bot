@@ -110,32 +110,31 @@ export const config = {
 
   intervals: {
     /** Makro-/News-/Stimmungsdaten (langsam veraenderlich). */
-    intel: 90_000,
+    intel: 50_000,
     /** Suche nach neuen Handelskandidaten. */
-    scan: 25_000,
+    scan: 18_000,
     /** Preis-Update offener Positionen + Exit-Pruefung. */
-    tick: 6_000,
+    tick: 5_000,
   },
 
   defaults: {
     tradingMode: str('TRADING_MODE', 'paper') === 'live' ? 'live' : 'paper',
-    paperStartBalance: num('PAPER_START_BALANCE', 11),
-    maxOpenPositions: num('MAX_OPEN_POSITIONS', 2),
-    riskPerTradePct: num('RISK_PER_TRADE_PCT', 14),
-    stopLossPct: num('STOP_LOSS_PCT', 11),
-    takeProfitPct: num('TAKE_PROFIT_PCT', 20),
-    trailingStopPct: num('TRAILING_STOP_PCT', 8),
-    maxHoldMinutes: num('MAX_HOLD_MINUTES', 25),
-    dailyLossLimitPct: num('DAILY_LOSS_LIMIT_PCT', 18),
-    maxDrawdownPct: num('MAX_DRAWDOWN_PCT', 32),
-    minLiquidityUsd: num('MIN_LIQUIDITY_USD', 40_000),
-    maxSlippagePct: num('MAX_SLIPPAGE_PCT', 5),
+    paperStartBalance: num('PAPER_START_BALANCE', 4.4),
+    maxOpenPositions: num('MAX_OPEN_POSITIONS', 1),
+    riskPerTradePct: num('RISK_PER_TRADE_PCT', 78),
+    stopLossPct: num('STOP_LOSS_PCT', 10),
+    takeProfitPct: num('TAKE_PROFIT_PCT', 16),
+    trailingStopPct: num('TRAILING_STOP_PCT', 7),
+    maxHoldMinutes: num('MAX_HOLD_MINUTES', 18),
+    dailyLossLimitPct: num('DAILY_LOSS_LIMIT_PCT', 28),
+    maxDrawdownPct: num('MAX_DRAWDOWN_PCT', 40),
+    minLiquidityUsd: num('MIN_LIQUIDITY_USD', 30_000),
+    maxSlippagePct: num('MAX_SLIPPAGE_PCT', 4),
     /**
-     * Mindest-Score (0-100) fuer einen Einstieg. Die neue Bewertung belohnt
-     * gesunde, nicht parabolische Setups. 64 filtert Mittelmass, das zuvor
-     * bei 55 noch durchgerutscht ist.
+     * Kalibriert fuer ein Mini-Konto (~4 €): eine Position, hoher Anteil,
+     * sonst bleibt die Order unter der 1-Dollar-Mindestgroesse.
      */
-    minEntryScore: num('MIN_ENTRY_SCORE', 64),
+    minEntryScore: num('MIN_ENTRY_SCORE', 62),
     /** Gebuehren-Annahme im Paper-Modus (DEX-Fee pro Seite, in Prozent). */
     paperFeePct: num('PAPER_FEE_PCT', 0.3),
   },

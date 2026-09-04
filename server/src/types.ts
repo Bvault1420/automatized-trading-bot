@@ -57,6 +57,8 @@ export interface MarketIntel {
   social: {
     heat: number;
     trendingTerms: { term: string; mentions: number }[];
+    freshPosts: number;
+    freshWindowMinutes: number;
   };
   narrative: string;
 }

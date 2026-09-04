@@ -5,7 +5,7 @@ import { hotWallet } from '../chain/hot.js';
 import { isSolanaAddress, isSolanaChain } from '../chain/solana.js';
 import { readDeposits } from '../chain/deposits.js';
 import { getIntel } from '../intel/index.js';
-import { getCandidates } from '../scanner/index.js';
+import { getCandidates, getScanStats } from '../scanner/index.js';
 import { engine } from '../trading/engine.js';
 import { portfolio } from '../trading/portfolio.js';
 import { LiveExecutor } from '../trading/executor/live.js';
@@ -68,6 +68,7 @@ export async function fullState() {
       explorer: config.chain.explorer,
       scanChains: db.data.settings.scanChains,
       intervals: config.intervals,
+      scanner: getScanStats(),
     },
   };
 }

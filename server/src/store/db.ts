@@ -58,11 +58,29 @@ const LEGACY_FACTORY_SETTINGS = {
   minEntryScore: 55,
 } as const;
 
-const STRATEGY_VERSION = 2;
+const STRATEGY_VERSION = 3;
 
 function migrateSettings(parsed: DbShape, fresh: BotSettings): BotSettings {
   const settings = { ...fresh, ...parsed.settings };
   if ((parsed.version ?? 1) >= STRATEGY_VERSION) return settings;
+
+  // v3: Mini-Konto (~4 €) – die angefragten „perfekten“ Defaults gelten.
+  if ((parsed.version ?? 1) < 3) {
+    return {
+      ...settings,
+      maxOpenPositions: fresh.maxOpenPositions,
+      riskPerTradePct: fresh.riskPerTradePct,
+      stopLossPct: fresh.stopLossPct,
+      takeProfitPct: fresh.takeProfitPct,
+      trailingStopPct: fresh.trailingStopPct,
+      maxHoldMinutes: fresh.maxHoldMinutes,
+      dailyLossLimitPct: fresh.dailyLossLimitPct,
+      maxDrawdownPct: fresh.maxDrawdownPct,
+      minLiquidityUsd: fresh.minLiquidityUsd,
+      maxSlippagePct: fresh.maxSlippagePct,
+      minEntryScore: fresh.minEntryScore,
+    };
+  }
 
   const next = { ...settings };
   for (const key of Object.keys(LEGACY_FACTORY_SETTINGS) as (keyof typeof LEGACY_FACTORY_SETTINGS)[]) {
@@ -70,14 +88,23 @@ function migrateSettings(parsed: DbShape, fresh: BotSettings): BotSettings {
       next[key] = fresh[key];
     }
   }
-  // Wer nur die Positionszahl hochgedreht hat, bekommt trotzdem die neue Selektion.
-  if (
-    parsed.settings?.minEntryScore === LEGACY_FACTORY_SETTINGS.minEntryScore &&
-    next.maxOpenPositions > fresh.maxOpenPositions
-  ) {
-    next.maxOpenPositions = fresh.maxOpenPositions;
-  }
   return next;
+}
+
+function migratePaperForMicro(parsed: DbShape, draft: DbShape): void {
+  if ((parsed.version ?? 1) >= 3) return;
+  const start = config.defaults.paperStartBalance;
+  draft.paper = {
+    cashUsd: start,
+    startEquityUsd: start,
+    dayStartEquityUsd: start,
+    dayStartedAt: Date.now(),
+    peakEquityUsd: start,
+    realizedPnlUsd: 0,
+  };
+  draft.positions = draft.positions.filter((p) => p.mode !== 'paper');
+  draft.trades = draft.trades.filter((t) => t.mode !== 'paper');
+  draft.equityCurve = [];
 }
 
 function defaultDb(): DbShape {
@@ -135,7 +162,7 @@ function load(): DbShape {
       const parsed = JSON.parse(fs.readFileSync(FILE, 'utf8')) as DbShape;
       const base = defaultDb();
       persistUpgrade = (parsed.version ?? 1) < STRATEGY_VERSION;
-      return {
+      const merged: DbShape = {
         ...base,
         ...parsed,
         version: Math.max(parsed.version ?? 1, STRATEGY_VERSION),
@@ -145,6 +172,8 @@ function load(): DbShape {
         paper: { ...base.paper, ...parsed.paper },
         live: { ...base.live, ...parsed.live },
       };
+      migratePaperForMicro(parsed, merged);
+      return merged;
     }
   } catch {
     // Beschaedigte Datei: mit Defaults neu starten statt zu crashen.

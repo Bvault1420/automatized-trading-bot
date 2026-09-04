@@ -138,6 +138,9 @@ export function NewsPanel({ intel }: { intel: Intel }) {
       icon={<Newspaper className="h-3.5 w-3.5" />}
       action={
         <div className="flex items-center gap-1.5">
+          {intel.social.freshPosts > 0 && (
+            <Chip tone="emerald">{intel.social.freshPosts} Posts / {intel.social.freshWindowMinutes} Min.</Chip>
+          )}
           <Chip tone="emerald">{intel.news.bullishCount} bullisch</Chip>
           <Chip tone="rose">{intel.news.bearishCount} bärisch</Chip>
         </div>

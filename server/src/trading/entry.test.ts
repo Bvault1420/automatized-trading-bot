@@ -61,7 +61,7 @@ function intel(partial: Partial<MarketIntel> = {}): MarketIntel {
       sol: null,
     },
     news: { sentiment: 0, bullishCount: 0, bearishCount: 0, items: [] },
-    social: { heat: 0.4, trendingTerms: [] },
+    social: { heat: 0.4, trendingTerms: [], freshPosts: 0, freshWindowMinutes: 30 },
     narrative: '',
     ...partial,
   };

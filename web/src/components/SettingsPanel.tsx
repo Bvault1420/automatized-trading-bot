@@ -24,8 +24,8 @@ const FIELDS: Field[] = [
   {
     key: 'riskPerTradePct',
     label: 'Einsatz pro Trade',
-    hint: 'Kleiner halten – wenige, saubere Trades schlagen viele Verlierer',
-    min: 5, max: 60, step: 1, unit: '%',
+    hint: 'Bei ~4 € hoch lassen (eine Order). 14 % von 4 € wären unter 1 $',
+    min: 5, max: 90, step: 1, unit: '%',
   },
   {
     key: 'maxOpenPositions',
@@ -96,7 +96,7 @@ export function SettingsPanel({
 }) {
   const [draft, setDraft] = useState<BotSettings>(settings);
   const [saving, setSaving] = useState(false);
-  const [paperBalance, setPaperBalance] = useState('11');
+  const [paperBalance, setPaperBalance] = useState('4.4');
 
   // Aenderungen vom Server uebernehmen, solange der Nutzer nichts Offenes hat.
   useEffect(() => setDraft(settings), [settings]);
@@ -146,10 +146,9 @@ export function SettingsPanel({
       bodyClassName="p-5 space-y-4"
     >
       <p className="rounded-xl border border-emerald-500/15 bg-emerald-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-slate-400">
-        Die Strategie filtert Abstürze, zu späte Einstiege und schwache
-        Orderbücher vor dem Kauf, nimmt Gewinne früher mit und schneidet
-        gescheiterte Trades, bevor der Stop-Loss greift. Weniger Trades, höhere
-        Qualität – keine Garantie, aber das ist der Hebel für die Trefferquote.
+        Kalibriert für ein Mini-Konto (~4 €): eine Position, ~78 % Einsatz,
+        enge Stops. Der Bot handelt sonst gar nicht, weil 14 % von 4 € unter
+        1 $ liegen. Keine Gewinn-Garantie – Gebühren fressen hier relativ viel.
       </p>
       <div className="space-y-3.5">
         {FIELDS.map((field) => {

@@ -42,8 +42,8 @@ export interface SocialIntel {
  */
 export async function fetchSocial(): Promise<SocialIntel> {
   const [trending, boosts] = await Promise.all([
-    getJson<TrendingResponse>('https://api.coingecko.com/api/v3/search/trending', { cacheMs: 3 * 60_000 }),
-    getJson<BoostEntry[]>('https://api.dexscreener.com/token-boosts/latest/v1', { cacheMs: 2 * 60_000 }),
+    getJson<TrendingResponse>('https://api.coingecko.com/api/v3/search/trending', { cacheMs: 90_000 }),
+    getJson<BoostEntry[]>('https://api.dexscreener.com/token-boosts/latest/v1', { cacheMs: 45_000 }),
   ]);
 
   const coins = trending?.coins ?? [];

@@ -11,10 +11,17 @@ const FEEDS: { url: string; source: string }[] = [
   { url: 'https://cointelegraph.com/rss', source: 'Cointelegraph' },
   { url: 'https://decrypt.co/feed', source: 'Decrypt' },
   { url: 'https://bitcoinmagazine.com/feed', source: 'Bitcoin Magazine' },
-  { url: 'https://news.google.com/rss/search?q=crypto+market&hl=en-US&gl=US&ceid=US:en', source: 'Google News' },
+  { url: 'https://cryptoslate.com/feed/', source: 'CryptoSlate' },
+  { url: 'https://www.newsbtc.com/feed/', source: 'NewsBTC' },
+  { url: 'https://www.theblock.co/rss.xml', source: 'The Block' },
+  { url: 'https://news.google.com/rss/search?q=crypto+market+when:1h&hl=en-US&gl=US&ceid=US:en', source: 'Google News 1h' },
   {
-    url: 'https://news.google.com/rss/search?q=memecoin+OR+%22meme+coin%22&hl=en-US&gl=US&ceid=US:en',
-    source: 'Google News (Memes)',
+    url: 'https://news.google.com/rss/search?q=memecoin+OR+%22meme+coin%22+OR+pump.fun+when:1h&hl=en-US&gl=US&ceid=US:en',
+    source: 'Google News Memes 1h',
+  },
+  {
+    url: 'https://news.google.com/rss/search?q=solana+memecoin+when:1h&hl=en-US&gl=US&ceid=US:en',
+    source: 'Google News Solana',
   },
 ];
 
@@ -43,7 +50,7 @@ function linkOf(value: unknown): string {
 }
 
 async function fetchFeed(url: string, source: string): Promise<NewsItem[]> {
-  const xml = await getText(url, { cacheMs: 4 * 60_000, timeoutMs: 12_000 });
+  const xml = await getText(url, { cacheMs: 90_000, timeoutMs: 10_000 });
   if (!xml) return [];
   try {
     const parsed = parser.parse(xml) as Record<string, any>;
@@ -80,7 +87,7 @@ async function fetchCryptoPanic(): Promise<NewsItem[]> {
   if (!config.cryptoPanicKey) return [];
   const res = await getJson<CryptoPanicResponse>(
     `https://cryptopanic.com/api/v1/posts/?auth_token=${config.cryptoPanicKey}&public=true&kind=news`,
-    { cacheMs: 4 * 60_000 },
+    { cacheMs: 90_000 },
   );
   return (res?.results ?? []).slice(0, 25).map((post) => {
     const { score, matchedTerms } = analyzeSentiment(post.title);
@@ -138,7 +145,8 @@ export async function fetchNews(): Promise<NewsIntel> {
 
   for (const item of items) {
     const ageHours = Math.max(0, (now - item.publishedAt) / 3_600_000);
-    const weight = Math.exp(-ageHours / 6);
+    // Sehr frische Meldungen (Minuten) dominieren, aeltere klingen in ~2h ab.
+    const weight = Math.exp(-ageHours / 2);
     if (item.sentiment !== 0) {
       weightedSum += item.sentiment * weight;
       weightTotal += weight;
