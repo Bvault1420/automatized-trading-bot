@@ -51,10 +51,10 @@ export function Header({
                 key={mode}
                 type="button"
                 onClick={() => onModeChange(mode)}
-                disabled={busy || (mode === 'live' && !wallet.liveReady)}
+                disabled={busy}
                 title={
                   mode === 'live' && !wallet.liveReady
-                    ? `Live nicht bereit: ${wallet.liveBlockers.join(' · ')}`
+                    ? `Noch ${wallet.liveBlockers.length} Schritt(e): ${wallet.liveBlockers.join(' · ')}`
                     : undefined
                 }
                 className={`rounded-[10px] px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-35 ${

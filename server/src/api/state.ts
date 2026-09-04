@@ -29,6 +29,7 @@ export async function walletState(): Promise<WalletState> {
     nativeSymbol: config.chain.nativeSymbol,
     nativeBalance: round(balance, 8),
     nativeBalanceUsd: round(balance * price, 2),
+    nativePriceUsd: round(price, 2),
     hasKeystore: botWallet.hasKeystore,
     unlocked: botWallet.unlocked,
     liveReady: blockers.length === 0,

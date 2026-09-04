@@ -196,6 +196,7 @@ export interface WalletState {
   nativeSymbol: string;
   nativeBalance: number;
   nativeBalanceUsd: number;
+  nativePriceUsd: number;
   hasKeystore: boolean;
   unlocked: boolean;
   liveReady: boolean;

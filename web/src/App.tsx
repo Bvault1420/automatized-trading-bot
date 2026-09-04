@@ -70,12 +70,19 @@ export default function App() {
 
   const setMode = useCallback(
     (mode: TradingMode) => {
-      if (mode === 'live' && !window.confirm('Echtgeld-Modus aktivieren? Der Bot handelt dann mit echtem Kapital.')) {
-        return;
+      if (mode === 'live') {
+        if (!state?.wallet.liveReady) {
+          notify(`Echtgeld ist noch nicht bereit: ${(state?.wallet.liveBlockers ?? []).join(' · ')}`, false);
+          document.getElementById('wallet-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+        if (!window.confirm('Echtgeld-Modus aktivieren? Der Bot handelt dann mit echtem Kapital auf Base.')) {
+          return;
+        }
       }
       void action(() => api.setMode(mode));
     },
-    [action],
+    [action, notify, state?.wallet.liveReady, state?.wallet.liveBlockers],
   );
 
   useEffect(() => {

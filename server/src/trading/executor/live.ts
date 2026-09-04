@@ -1,42 +1,23 @@
-import { erc20Abi, formatUnits, parseEther, parseUnits, type Address, type Hex } from 'viem';
+import { erc20Abi, formatUnits, maxUint256, parseEther, parseUnits, type Address, type Hex } from 'viem';
 import { config } from '../../config.js';
 import { botWallet } from '../../chain/wallet.js';
 import { nativePriceUsd } from '../../chain/prices.js';
 import { createLogger } from '../../util/logger.js';
-import { getJson } from '../../util/http.js';
 import { clamp } from '../../util/num.js';
+import { routeSwap } from './router.js';
 import type { Position, TokenCandidate } from '../../types.js';
 import type { BuyResult, Executor, SellResult } from './types.js';
 
 const log = createLogger('live');
 
-/** 0x-Pseudoadresse fuer den Native-Coin der jeweiligen Chain. */
-const NATIVE = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as Address;
-const ZEROX_API = 'https://api.0x.org/swap/allowance-holder';
-
 /** Native-Reserve, damit immer genug fuer Gas (auch fuer den Exit) bleibt. */
-const GAS_RESERVE_ETH = 0.00025;
-
-interface ZeroExQuote {
-  liquidityAvailable?: boolean;
-  buyAmount?: string;
-  sellAmount?: string;
-  minBuyAmount?: string;
-  totalNetworkFee?: string;
-  issues?: {
-    allowance?: { actual: string; spender: Address } | null;
-    balance?: { token: Address; actual: string; expected: string } | null;
-    simulationIncomplete?: boolean;
-  };
-  transaction?: { to: Address; data: Hex; gas?: string; gasPrice?: string; value?: string };
-}
+export const GAS_RESERVE_ETH = 0.00025;
 
 /**
  * Fuehrt echte On-Chain-Swaps aus.
  *
- * Das Routing uebernimmt die 0x-Swap-API: sie aggregiert alle relevanten DEXes
- * einer Chain, was bei Memecoins entscheidend ist, da Liquiditaet sich ueber
- * Uniswap v2/v3/v4, Aerodrome und andere Pools verteilt.
+ * Das Routing laeuft ueber oeffentliche Aggregatoren (KyberSwap, LiFi, optional 0x).
+ * Ein API-Key ist dafuer nicht noetig – der Bot kann nach Einzahlung sofort handeln.
  */
 export class LiveExecutor implements Executor {
   readonly mode = 'live' as const;
@@ -45,14 +26,25 @@ export class LiveExecutor implements Executor {
 
   async blockers(): Promise<string[]> {
     const reasons: string[] = [];
-    if (!botWallet.hasKeystore) reasons.push('Kein Bot-Wallet erstellt');
-    else if (!botWallet.unlocked) reasons.push('Bot-Wallet ist gesperrt (Passphrase erforderlich)');
-    if (!config.zeroExApiKey) reasons.push('ZEROX_API_KEY fehlt – ohne Swap-Router sind keine echten Trades möglich');
+    if (!botWallet.hasKeystore) reasons.push('Zuerst ein Bot-Wallet erstellen (rechte Seite, Passphrase vergeben)');
+    else if (!botWallet.unlocked) {
+      reasons.push('Bot-Wallet ist gesperrt – Passphrase eingeben, damit der Bot Transaktionen signieren kann');
+    }
 
     if (botWallet.address && botWallet.unlocked) {
       const balance = await botWallet.nativeBalance();
       if (balance <= GAS_RESERVE_ETH) {
-        reasons.push(`Bot-Wallet nicht ausreichend finanziert (${balance.toFixed(6)} ${config.chain.nativeSymbol})`);
+        reasons.push(
+          `Noch kein Guthaben: sende ETH auf ${config.chain.name} an das Bot-Wallet (aktuell ${balance.toFixed(6)} ${config.chain.nativeSymbol})`,
+        );
+      }
+    } else if (botWallet.address && !botWallet.unlocked) {
+      // Guthaben trotzdem pruefen, damit die Checkliste den Einzahlungsstatus zeigt.
+      const balance = await botWallet.nativeBalance();
+      if (balance <= GAS_RESERVE_ETH) {
+        reasons.push(
+          `Noch kein Guthaben: sende ETH auf ${config.chain.name} an das Bot-Wallet (aktuell ${balance.toFixed(6)} ${config.chain.nativeSymbol})`,
+        );
       }
     }
     return reasons;
@@ -79,28 +71,41 @@ export class LiveExecutor implements Executor {
     return Number(value);
   }
 
-  private async quote(params: Record<string, string>): Promise<ZeroExQuote | null> {
-    const query = new URLSearchParams({ chainId: String(config.chain.id), ...params }).toString();
-    return getJson<ZeroExQuote>(`${ZEROX_API}/quote?${query}`, {
-      headers: { '0x-api-key': config.zeroExApiKey, '0x-version': 'v2' },
-      timeoutMs: 20_000,
-      retries: 1,
-    });
-  }
-
-  private async sendAndWait(tx: NonNullable<ZeroExQuote['transaction']>): Promise<Hex> {
+  private async sendAndWait(tx: { to: Address; data: Hex; value: bigint; gasLimit?: bigint }): Promise<Hex> {
     const account = botWallet.requireAccount();
     const hash = await botWallet.walletClient().sendTransaction({
       account,
       chain: botWallet.chain,
       to: tx.to,
       data: tx.data,
-      value: BigInt(tx.value ?? '0'),
-      ...(tx.gas ? { gas: (BigInt(tx.gas) * 130n) / 100n } : {}),
+      value: tx.value,
+      ...(tx.gasLimit ? { gas: (tx.gasLimit * 130n) / 100n } : {}),
     });
     const receipt = await botWallet.publicClient().waitForTransactionReceipt({ hash, timeout: 120_000 });
     if (receipt.status !== 'success') throw new Error(`Transaktion fehlgeschlagen (${hash})`);
     return hash;
+  }
+
+  private async ensureAllowance(token: Address, spender: Address, amount: bigint): Promise<void> {
+    const account = botWallet.requireAccount();
+    const current = await botWallet.publicClient().readContract({
+      address: token,
+      abi: erc20Abi,
+      functionName: 'allowance',
+      args: [account.address, spender],
+    });
+    if (current >= amount) return;
+
+    const approveHash = await botWallet.walletClient().writeContract({
+      account,
+      chain: botWallet.chain,
+      address: token,
+      abi: erc20Abi,
+      functionName: 'approve',
+      args: [spender, maxUint256],
+    });
+    await botWallet.publicClient().waitForTransactionReceipt({ hash: approveHash, timeout: 120_000 });
+    log.info(`Freigabe erteilt für ${token} an ${spender} – ${approveHash}`);
   }
 
   async buy(candidate: TokenCandidate, amountUsd: number, maxSlippagePct: number): Promise<BuyResult> {
@@ -121,35 +126,33 @@ export class LiveExecutor implements Executor {
       if (balance - GAS_RESERVE_ETH < sellEth) return fail('Guthaben im Bot-Wallet reicht nicht');
 
       const sellAmount = parseEther(sellEth.toFixed(18));
-      const quote = await this.quote({
-        sellToken: NATIVE,
-        buyToken: candidate.tokenAddress,
-        sellAmount: sellAmount.toString(),
+      const quote = await routeSwap({
+        sellToken: 'native',
+        buyToken: candidate.tokenAddress as Address,
+        sellAmount,
         taker: botWallet.requireAccount().address,
-        slippageBps: String(Math.round(clamp(maxSlippagePct, 0.1, 50) * 100)),
+        slippagePct: maxSlippagePct,
       });
 
-      if (!quote) return fail('Keine Antwort vom Swap-Router');
-      if (quote.liquidityAvailable === false) return fail('Keine ausreichende Liquidität für die Route');
-      if (!quote.transaction) return fail('Router lieferte keine ausführbare Transaktion');
-
       const decimals = await this.decimals(candidate.tokenAddress as Address);
-      const tokenAmount = Number(formatUnits(BigInt(quote.buyAmount ?? '0'), decimals));
+      const tokenAmount = Number(formatUnits(quote.buyAmount, decimals));
       if (tokenAmount <= 0) return fail('Router lieferte eine Menge von 0');
 
-      const hash = await this.sendAndWait(quote.transaction);
+      const hash = await this.sendAndWait(quote);
 
-      const gasUsd = Number(formatUnits(BigInt(quote.totalNetworkFee ?? '0'), 18)) * ethPrice;
-      const spentUsd = sellEth * ethPrice;
-      const priceUsd = spentUsd / tokenAmount;
+      const spentEth = Number(formatUnits(quote.value || sellAmount, 18));
+      const spentUsd = spentEth * ethPrice;
+      const priceUsd = tokenAmount > 0 ? spentUsd / tokenAmount : 0;
 
-      log.trade(`GEKAUFT ${candidate.symbol}: ${tokenAmount.toFixed(4)} für $${spentUsd.toFixed(2)} – ${hash}`);
+      log.trade(
+        `GEKAUFT ${candidate.symbol}: ${tokenAmount.toFixed(4)} für $${spentUsd.toFixed(2)} über ${quote.source} – ${hash}`,
+      );
       return {
         ok: true,
         tokenAmount,
         priceUsd,
-        spentUsd: spentUsd + gasUsd,
-        feeUsd: gasUsd,
+        spentUsd,
+        feeUsd: 0,
         slippagePct: 0,
         txHash: hash,
       };
@@ -168,8 +171,6 @@ export class LiveExecutor implements Executor {
       const token = position.tokenAddress as Address;
       const decimals = await this.decimals(token);
 
-      // Immer den echten On-Chain-Bestand verkaufen: bei Token mit Transfer-Steuer
-      // weicht der tatsaechliche Saldo von der erwarteten Menge ab.
       const onChainBalance = await botWallet.publicClient().readContract({
         address: token,
         abi: erc20Abi,
@@ -184,84 +185,37 @@ export class LiveExecutor implements Executor {
       if (sellRaw <= 0n) return fail('Kein Token-Guthaben zum Verkaufen');
 
       const ethPrice = await nativePriceUsd(config.chain.nativeSymbol);
-
-      const quote = await this.quote({
+      const quote = await routeSwap({
         sellToken: token,
-        buyToken: NATIVE,
-        sellAmount: sellRaw.toString(),
+        buyToken: 'native',
+        sellAmount: sellRaw,
         taker: account.address,
-        slippageBps: String(Math.round(clamp(maxSlippagePct * 2, 1, 50) * 100)),
+        slippagePct: Math.min(50, maxSlippagePct * 2),
       });
 
-      if (!quote) return fail('Keine Antwort vom Swap-Router');
-      if (quote.liquidityAvailable === false) return fail('Keine Liquidität für den Verkauf');
+      if (quote.spender) await this.ensureAllowance(token, quote.spender, sellRaw);
 
-      // Freigabe fuer den AllowanceHolder-Contract, falls noch nicht erteilt.
-      const allowance = quote.issues?.allowance;
-      if (allowance && allowance.spender) {
-        const approveHash = await botWallet.walletClient().writeContract({
-          account,
-          chain: botWallet.chain,
-          address: token,
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [allowance.spender, sellRaw],
-        });
-        await botWallet.publicClient().waitForTransactionReceipt({ hash: approveHash, timeout: 120_000 });
-        log.info(`Freigabe erteilt für ${position.symbol} – ${approveHash}`);
-      }
+      const hash = await this.sendAndWait(quote);
 
-      // Nach der Freigabe neu quoten, damit die Route aktuell ist.
-      const finalQuote = allowance
-        ? await this.quote({
-            sellToken: token,
-            buyToken: NATIVE,
-            sellAmount: sellRaw.toString(),
-            taker: account.address,
-            slippageBps: String(Math.round(clamp(maxSlippagePct * 2, 1, 50) * 100)),
-          })
-        : quote;
-
-      if (!finalQuote?.transaction) return fail('Router lieferte keine ausführbare Transaktion');
-
-      const hash = await this.sendAndWait(finalQuote.transaction);
-
-      const ethOut = Number(formatUnits(BigInt(finalQuote.buyAmount ?? '0'), 18));
-      const gasUsd = Number(formatUnits(BigInt(finalQuote.totalNetworkFee ?? '0'), 18)) * ethPrice;
+      const ethOut = Number(formatUnits(quote.buyAmount, 18));
       const proceedsUsd = ethOut * ethPrice;
       const tokenAmount = Number(formatUnits(sellRaw, decimals));
 
       log.trade(
-        `VERKAUFT ${position.symbol}: ${tokenAmount.toFixed(4)} für $${proceedsUsd.toFixed(2)} – ${hash}`,
+        `VERKAUFT ${position.symbol}: ${tokenAmount.toFixed(4)} für $${proceedsUsd.toFixed(2)} über ${quote.source} – ${hash}`,
       );
       return {
         ok: true,
         tokenAmount,
         priceUsd: tokenAmount > 0 ? proceedsUsd / tokenAmount : 0,
-        proceedsUsd: Math.max(0, proceedsUsd - gasUsd),
-        feeUsd: gasUsd,
+        proceedsUsd,
+        feeUsd: 0,
         slippagePct: 0,
         txHash: hash,
       };
     } catch (err) {
       return fail((err as Error).message);
     }
-  }
-
-  /** Hilfsfunktion fuer die UI: wie viel Native-Coin haelt das Bot-Wallet. */
-  async tokenBalance(token: Address): Promise<number> {
-    const account = botWallet.address;
-    if (!account) return 0;
-    const [raw, decimals] = await Promise.all([
-      botWallet.publicClient().readContract({
-        address: token,
-        abi: erc20Abi,
-        functionName: 'balanceOf',
-        args: [account],
-      }),
-      this.decimals(token),
-    ]);
-    return Number(formatUnits(raw, decimals));
   }
 }
 

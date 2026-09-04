@@ -142,8 +142,8 @@ MetaMask kann einen Bot nicht autonom handeln lassen – jede Transaktion
 verlangt eine manuelle Bestätigung im Browser. Deshalb arbeitet Aletheia mit
 zwei Wallets:
 
-1. **Dein MetaMask** – wird verbunden und dient ausschließlich als
-   Auszahlungsziel. Der Bot bekommt dadurch keinerlei Zugriff darauf.
+1. **Dein MetaMask** – wird verbunden und dient als Ein- und Auszahlungsziel.
+   Der Bot bekommt dadurch keinerlei Zugriff darauf.
 2. **Das Handelswallet des Bots** – wird lokal erzeugt, der private Schlüssel
    liegt mit scrypt + AES-256-GCM verschlüsselt in `data/bot.json`. Du zahlst
    dort z. B. 10 € in ETH auf Base ein, und der Bot handelt eigenständig damit.
@@ -154,13 +154,19 @@ lässt sich der private Schlüssel exportieren und direkt in MetaMask importiere
 
 ### Echtgeld-Modus aktivieren
 
-1. `.env` anlegen und `WALLET_PASSPHRASE` setzen
-2. Einen `ZEROX_API_KEY` von [dashboard.0x.org](https://dashboard.0x.org)
-   eintragen – darüber läuft das Swap-Routing
-3. Eigenen `RPC_URL` eintragen (empfohlen; öffentliche RPCs limitieren stark)
-4. Im Dashboard MetaMask verbinden, Bot-Wallet erstellen, ETH auf **Base**
-   einzahlen
-5. Auf „Echtgeld" umschalten und starten
+Ein API-Key ist **nicht** nötig. Swaps laufen über KyberSwap und LiFi
+(öffentliche Aggregatoren). 0x ist nur ein optionaler Zusatzrouter.
+
+Im Dashboard, rechte Seite „Echtgeld einrichten":
+
+1. Bot-Wallet erstellen (Passphrase merken)
+2. Wallet entsperren (nach jedem Server-Neustart erneut)
+3. ETH auf **Base** einzahlen – entweder Adresse kopieren oder direkt
+   „Aus MetaMask" (Netzwerk muss Base sein, nicht Ethereum Mainnet)
+4. Oben auf **Echtgeld** umschalten und den Bot starten
+
+Optional in `.env`: `WALLET_PASSPHRASE` (entsperrt beim Start automatisch)
+und `RPC_URL` (eigener RPC, öffentliche Endpunkte limitieren stark).
 
 Base ist voreingestellt, weil die Transaktionsgebühren dort im Bereich weniger
 Cent liegen – bei einem Einsatz von 10 € ist das entscheidend.
@@ -210,7 +216,7 @@ Zurücksetzen genügt das Löschen der Datei.
 | `CHAIN` | `base` | Chain für echte Swaps (`base`, `ethereum`, `bsc`, `arbitrum`) |
 | `RPC_URL` | öffentlich | Eigener RPC-Endpunkt |
 | `WALLET_PASSPHRASE` | – | Entsperrt das Bot-Wallet beim Start |
-| `ZEROX_API_KEY` | – | Pflicht für echte Swaps |
+| `ZEROX_API_KEY` | – | Optional, zusätzlicher Swap-Router |
 | `CRYPTOPANIC_API_KEY` | – | Optional, ergänzt die News-Quellen |
 | `MIN_ENTRY_SCORE` | `55` | Einstiegsschwelle |
 
