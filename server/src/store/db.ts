@@ -6,6 +6,11 @@ import type { BotSettings, EquityPoint, Position, Trade } from '../types.js';
 export interface DbShape {
   version: number;
   settings: BotSettings;
+  /**
+   * Ueberlebt Neustarts: ein abgestuerzter oder neu gestarteter Prozess soll den
+   * Handel nicht stillschweigend einstellen.
+   */
+  runtime: { shouldRun: boolean };
   wallet: {
     ownerAddress: string | null;
     /** verschluesselter Keystore des Bot-Wallets */
@@ -54,6 +59,7 @@ function defaultDb(): DbShape {
       minEntryScore: d.minEntryScore,
       scanChains: [...config.scanChains],
     },
+    runtime: { shouldRun: false },
     wallet: { ownerAddress: null, keystore: null, botAddress: null },
     paper: {
       cashUsd: d.paperStartBalance,
@@ -92,6 +98,7 @@ function load(): DbShape {
         ...base,
         ...parsed,
         settings: { ...base.settings, ...parsed.settings },
+        runtime: { ...base.runtime, ...parsed.runtime },
         wallet: { ...base.wallet, ...parsed.wallet },
         paper: { ...base.paper, ...parsed.paper },
         live: { ...base.live, ...parsed.live },

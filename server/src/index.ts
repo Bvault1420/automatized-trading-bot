@@ -52,7 +52,8 @@ server.listen(config.port, () => {
 
 function shutdown(signal: string): void {
   log.warn(`${signal} empfangen – Bot wird beendet`);
-  engine.stop('Server heruntergefahren');
+  // Bewusst ohne engine.stop(): der gespeicherte Laufzustand bleibt erhalten,
+  // damit der Handel nach einem Neustart selbsttaetig weiterlaeuft.
   engine.shutdown();
   db.flush();
   server.close(() => process.exit(0));

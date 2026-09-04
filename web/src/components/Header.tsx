@@ -7,6 +7,7 @@ export function Header({
   wallet,
   connection,
   busy,
+  openPositions,
   onStart,
   onStop,
   onPanic,
@@ -16,6 +17,7 @@ export function Header({
   wallet: WalletState;
   connection: 'connecting' | 'live' | 'offline';
   busy: boolean;
+  openPositions: number;
   onStart: () => void;
   onStop: () => void;
   onPanic: () => void;
@@ -106,9 +108,16 @@ export function Header({
         </div>
       </div>
 
-      {status.haltReason && !status.running && (
+      {!status.running && (status.haltReason || openPositions > 0) && (
         <div className="border-t border-amber-500/20 bg-amber-500/[0.07] px-6 py-2 text-center text-xs font-medium text-amber-300">
           {status.haltReason}
+          {status.haltReason && openPositions > 0 && ' · '}
+          {openPositions > 0 && (
+            <span className="text-amber-200/80">
+              {openPositions} offene Position{openPositions === 1 ? '' : 'en'} – Stop-Loss und Notausstieg bleiben
+              aktiv
+            </span>
+          )}
         </div>
       )}
     </header>

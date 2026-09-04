@@ -122,6 +122,18 @@ Ausstiege, in dieser Reihenfolge geprüft:
 - Slippage-Limit bricht den Kauf ab, wenn die Ausführung zu teuer wird
 - Sicherheitsprüfung wird unmittelbar vor dem Kauf wiederholt
 
+Zwei Eigenschaften sind dabei besonders wichtig:
+
+**„Stoppen" hält nur neue Einstiege an.** Offene Positionen behalten ihren
+Stop-Loss, ihren Trailing-Stop und den Notausstieg bei einbrechender
+Liquidität. Andernfalls stünde bestehendes Kapital genau dann ungeschützt da,
+wenn es am gefährlichsten ist – etwa während eines Rug-Pulls.
+
+**Der Laufzustand übersteht Neustarts.** Lief der Handel vor einem Absturz oder
+Neustart, nimmt der Bot ihn selbsttätig wieder auf (im Echtgeld-Modus erst nach
+erneuter Prüfung aller Voraussetzungen). Ein Prozessneustart darf den Bot nicht
+unbemerkt stilllegen.
+
 ---
 
 ## Wallet-Konzept

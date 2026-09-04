@@ -11,6 +11,7 @@ import { portfolio } from './portfolio.js';
 import { checkCandidate, checkGlobalRisk, positionSizeUsd, type RiskContext } from './risk.js';
 import { PaperExecutor } from './executor/paper.js';
 import { LiveExecutor } from './executor/live.js';
+import { botWallet } from '../chain/wallet.js';
 import type { Executor } from './executor/types.js';
 import type { BotSettings, BotStatus, Position, ScoredCandidate, TradingMode } from '../types.js';
 
@@ -36,6 +37,7 @@ class Engine {
   private timers: NodeJS.Timeout[] = [];
   private busy = false;
   private scanning = false;
+  private lockedWarningAt = 0;
   /** Positionen die gerade verkauft werden – verhindert doppelte Orders. */
   private selling = new Set<string>();
 
@@ -77,6 +79,14 @@ class Engine {
     this.timers.push(setInterval(() => void this.refreshIntelSafe(), config.intervals.intel));
     this.timers.push(setInterval(() => void this.scanSafe(), config.intervals.scan));
     this.timers.push(setInterval(() => void this.tickSafe(), config.intervals.tick));
+
+    // Nach einem Neustart den Handel fortsetzen, wenn er zuvor lief – sonst
+    // stuende der Bot nach einem Absturz unbemerkt still.
+    if (db.data.runtime.shouldRun) {
+      void this.start(true).then((result) => {
+        if (!result.ok) log.warn(`Automatischer Neustart des Handels nicht möglich: ${result.message}`);
+      });
+    }
   }
 
   shutdown(): void {
@@ -84,7 +94,7 @@ class Engine {
     this.timers = [];
   }
 
-  async start(): Promise<{ ok: boolean; message: string }> {
+  async start(resumed = false): Promise<{ ok: boolean; message: string }> {
     if (this.running) return { ok: true, message: 'Bot läuft bereits' };
 
     const blockers = await this.executor.blockers();
@@ -97,17 +107,34 @@ class Engine {
     this.running = true;
     this.haltReason = null;
     this.startedAt = Date.now();
-    log.success(`Bot gestartet im ${this.mode === 'live' ? 'LIVE' : 'PAPER'}-Modus`);
+    db.update((draft) => {
+      draft.runtime.shouldRun = true;
+    });
+    log.success(
+      `${resumed ? 'Handel nach Neustart fortgesetzt' : 'Bot gestartet'} im ${this.mode === 'live' ? 'LIVE' : 'PAPER'}-Modus`,
+    );
     this.emitStatus();
     void this.tickSafe();
     return { ok: true, message: `Bot gestartet (${this.mode})` };
   }
 
+  /**
+   * Stoppt ausschliesslich neue Einstiege. Offene Positionen bleiben durch
+   * Stop-Loss, Trailing-Stop und Notausstieg weiter geschuetzt.
+   */
   stop(reason = 'Manuell gestoppt'): void {
+    db.update((draft) => {
+      draft.runtime.shouldRun = false;
+    });
     if (!this.running) return;
     this.running = false;
     this.haltReason = reason;
-    log.warn(`Bot gestoppt: ${reason}`);
+    const open = portfolio.openPositions(this.mode).length;
+    log.warn(
+      open > 0
+        ? `Bot gestoppt: ${reason} – ${open} offene Position(en) bleiben durch das Risikomanagement überwacht`
+        : `Bot gestoppt: ${reason}`,
+    );
     this.emitStatus();
   }
 
@@ -210,19 +237,38 @@ class Engine {
   private async tick(): Promise<void> {
     this.lastTickAt = Date.now();
 
-    // Offene Positionen werden immer gepflegt – auch bei gestopptem Bot bleiben
-    // Kurse und Kennzahlen aktuell.
     await this.updatePositions();
 
     const ctx = await this.riskContext();
 
+    // Risikomanagement laeuft immer. "Gestoppt" bedeutet ausdruecklich nur
+    // "keine neuen Einstiege" – offene Positionen behalten ihren Stop-Loss,
+    // ihren Trailing-Stop und den Notausstieg bei Liquiditaetseinbruch. Alles
+    // andere wuerde bestehendes Kapital genau dann ungeschuetzt lassen, wenn
+    // es am gefaehrlichsten ist.
+    if (this.canExit()) await this.manageExits(ctx);
+
     if (this.running) {
-      await this.manageExits(ctx);
       await this.considerEntries(ctx);
       this.cyclesCompleted++;
     }
 
     this.emitStatus();
+  }
+
+  /** Im Live-Modus sind Verkaeufe ohne entsperrtes Wallet technisch unmoeglich. */
+  private canExit(): boolean {
+    if (this.mode !== 'live') return true;
+    if (botWallet.unlocked) return true;
+
+    const open = portfolio.openPositions('live').length;
+    if (open > 0 && Date.now() - this.lockedWarningAt > 5 * 60_000) {
+      this.lockedWarningAt = Date.now();
+      log.warn(
+        `${open} Live-Position(en) offen, aber das Bot-Wallet ist gesperrt – Ausstiege sind bis zum Entsperren nicht möglich`,
+      );
+    }
+    return false;
   }
 
   private async updatePositions(): Promise<void> {

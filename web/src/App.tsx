@@ -115,6 +115,7 @@ export default function App() {
         wallet={wallet}
         connection={connection}
         busy={busy}
+        openPositions={positions.length}
         onStart={() => void action(api.start)}
         onStop={() => void action(api.stop)}
         onPanic={panic}
