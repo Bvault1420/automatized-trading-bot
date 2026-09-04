@@ -1,0 +1,22 @@
+{
+  "name": "aletheia-trading-bot",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Vollautomatischer Krypto-/Memecoin-Trading-Bot mit Multi-Source-Marktanalyse und Web-Dashboard",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n SERVER,WEB -c cyan,magenta \"npm run dev -w server\" \"npm run dev -w web\"",
+    "build": "npm run build -w server && npm run build -w web",
+    "start": "npm run start -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
