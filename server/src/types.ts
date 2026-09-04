@@ -31,6 +31,10 @@ export interface NewsItem {
   publishedAt: number;
   sentiment: number;
   matchedTerms: string[];
+  /** 0..1 – wie sehr diese Meldung das Marktbild bewegen darf. */
+  importance?: number;
+  importanceTier?: 'high' | 'medium' | 'low' | 'junk';
+  importanceWhy?: string;
 }
 
 export interface MarketIntel {
@@ -53,6 +57,8 @@ export interface MarketIntel {
     bullishCount: number;
     bearishCount: number;
     items: NewsItem[];
+    /** Meldungen, die als Lärm/Fake-Hype rausgeflogen sind. */
+    filteredOut?: number;
   };
   social: {
     heat: number;
@@ -185,6 +191,10 @@ export interface Position {
   pnlPct: number;
   fills: PositionFill[];
   exitReason?: string;
+  /** Geschätzte Restkosten eines Verkaufs (nicht persistierte Entscheidungshilfe). */
+  estimatedExitCostUsd?: number;
+  netPnlUsd?: number;
+  netPnlPct?: number;
 }
 
 export interface Trade {
@@ -250,6 +260,10 @@ export interface PortfolioState {
   totalPnlPct: number;
   dayPnlPct: number;
   drawdownPct: number;
+  /** Summe erfasster Swap-/Gas-Fees der Positionen dieses Modus. */
+  feesUsd: number;
+  /** Geschätzte Kosten, die offenen Positionen beim Verkauf noch entstehen. */
+  estimatedExitCostUsd: number;
 }
 
 export interface BotStatus {

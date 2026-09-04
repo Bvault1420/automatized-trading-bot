@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { confirmLiveTape, effectiveMinScore, marketEntryBlocked } from './entry.js';
+import { estimateRoundTripCostUsd, roundTripAllowsEntry } from './fees.js';
 import type { BotSettings, MarketIntel, TokenCandidate, Trade } from '../types.js';
 
 const settings: BotSettings = {
@@ -142,6 +143,19 @@ describe('effectiveMinScore', () => {
     })) satisfies Trade[];
     const cold = effectiveMinScore(settings, intel({ regime: 'risk-on' }), trades, 3);
     assert.ok(cold > base);
+  });
+});
+
+describe('roundTripAllowsEntry', () => {
+  it('blockiert Mini-Tickets, deren Gas den Take-Profit auffrisst', () => {
+    const rt = estimateRoundTripCostUsd({
+      notionalUsd: 2.2,
+      nativePriceUsd: 100,
+      liquidityUsd: 20_000,
+      micro: false,
+    });
+    const verdict = roundTripAllowsEntry(2.2, 16, rt);
+    assert.equal(verdict.ok, false);
   });
 });
 

@@ -13,6 +13,7 @@ import {
   WSOL_MINT,
   isSolanaChain,
   tokenAmountForMint,
+  closeEmptyTokenAccounts,
 } from '../../chain/solana.js';
 import { solanaWallet } from '../../chain/solanaWallet.js';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
@@ -74,7 +75,7 @@ export class LiveExecutor implements Executor {
     return reasons;
   }
 
-  async snapshotUsd(): Promise<{ availableUsd: number; walletUsd: number; reservedUsd: number }> {
+  async snapshotUsd(): Promise<{ availableUsd: number; walletUsd: number; reservedUsd: number; nativePriceUsd: number }> {
     if (hotWallet.unlocked) {
       try {
         await sweepToNative();
@@ -89,6 +90,7 @@ export class LiveExecutor implements Executor {
       availableUsd,
       walletUsd: snap.totalUsd,
       reservedUsd,
+      nativePriceUsd: snap.nativePriceUsd,
     };
   }
 
@@ -157,21 +159,29 @@ export class LiveExecutor implements Executor {
     const lamports = BigInt(Math.floor(sellSol * LAMPORTS_PER_SOL));
     if (lamports <= 0n) return failBuy('Betrag zu klein für einen Swap');
 
-    const result = await executeSwap(WSOL_MINT, candidate.tokenAddress, lamports, maxSlippagePct);
+    const solBefore = balance;
+    const micro = amountUsd <= 8;
+    const result = await executeSwap(WSOL_MINT, candidate.tokenAddress, lamports, maxSlippagePct, {
+      maxLamports: micro ? 500_000 : 2_000_000,
+      priorityLevel: micro ? 'medium' : 'high',
+    });
     const tokenAmount = Number(result.outAmount) / 10 ** result.outDecimals;
-    const spentSol = Number(result.inAmount) / LAMPORTS_PER_SOL;
+    const swapInSol = Number(result.inAmount) / LAMPORTS_PER_SOL;
+    const solAfter = await solanaWallet.nativeBalance();
+    const spentSol = Math.max(swapInSol, solBefore - solAfter);
     const spentUsd = spentSol * solPrice;
+    const feeUsd = Math.max(0, spentSol - swapInSol) * solPrice;
     if (tokenAmount <= 0) return failBuy('Jupiter lieferte eine Menge von 0');
 
     log.trade(
-      `GEKAUFT ${candidate.symbol}: ${tokenAmount.toFixed(4)} für $${spentUsd.toFixed(2)} über Jupiter – ${result.signature}`,
+      `GEKAUFT ${candidate.symbol}: ${tokenAmount.toFixed(4)} für $${spentUsd.toFixed(2)} (Gas/Miete ~$${feeUsd.toFixed(3)}) über Jupiter – ${result.signature}`,
     );
     return {
       ok: true,
       tokenAmount,
       priceUsd: tokenAmount > 0 ? spentUsd / tokenAmount : 0,
       spentUsd,
-      feeUsd: 0,
+      feeUsd,
       slippagePct: 0,
       txHash: result.signature,
     };
@@ -189,23 +199,58 @@ export class LiveExecutor implements Executor {
     if (sellRaw <= 0n) return failSell('Kein Token-Guthaben zum Verkaufen');
 
     const solPrice = await nativePriceUsd('SOL');
-    const result = await executeSwap(position.tokenAddress, WSOL_MINT, sellRaw, Math.min(50, maxSlippagePct * 2));
-    const solOut = Number(result.outAmount) / LAMPORTS_PER_SOL;
-    const proceedsUsd = solOut * solPrice;
+    const solBefore = await solanaWallet.nativeBalance();
+    const micro = position.costUsd <= 8;
+    const result = await executeSwap(position.tokenAddress, WSOL_MINT, sellRaw, Math.min(50, maxSlippagePct * 2), {
+      maxLamports: micro ? 500_000 : 2_000_000,
+      priorityLevel: micro ? 'medium' : 'high',
+    });
+    const quoteSolOut = Number(result.outAmount) / LAMPORTS_PER_SOL;
+    let solAfter = await solanaWallet.nativeBalance();
+    if (fraction >= 0.999) {
+      try {
+        const reclaimed = await closeEmptyTokenAccounts(owner, solanaWallet.requireKeypair());
+        if (reclaimed.closed > 0) {
+          log.info(`Leere Token-Konten geschlossen (${reclaimed.closed}) – Miete zurück`);
+          solAfter = await solanaWallet.nativeBalance();
+        }
+      } catch {
+        // Miete bleibt liegen und wird beim nächsten Vollverkauf erneut versucht.
+      }
+    }
+    const netSol = solAfter - solBefore;
+    const proceedsUsd = Math.max(0, netSol) * solPrice;
     const tokenAmount = Number(sellRaw) / 10 ** held.decimals;
+    const feeUsd = Math.max(0, quoteSolOut - Math.max(0, netSol)) * solPrice;
 
     log.trade(
-      `VERKAUFT ${position.symbol}: ${tokenAmount.toFixed(4)} für $${proceedsUsd.toFixed(2)} über Jupiter – ${result.signature}`,
+      `VERKAUFT ${position.symbol}: ${tokenAmount.toFixed(4)} für $${proceedsUsd.toFixed(2)} (Gas ~$${feeUsd.toFixed(3)}) über Jupiter – ${result.signature}`,
     );
     return {
       ok: true,
       tokenAmount,
       priceUsd: tokenAmount > 0 ? proceedsUsd / tokenAmount : 0,
       proceedsUsd,
-      feeUsd: 0,
+      feeUsd,
       slippagePct: 0,
       txHash: result.signature,
     };
+  }
+
+  async reclaimEmptyAtas(): Promise<number> {
+    if (!isSolanaChain() || !solanaWallet.unlocked) return 0;
+    try {
+      const result = await closeEmptyTokenAccounts(
+        solanaWallet.requireKeypair().publicKey,
+        solanaWallet.requireKeypair(),
+      );
+      if (result.closed > 0) {
+        log.info(`${result.closed} leere Token-Konto/Konten geschlossen – SOL-Miete zurück im Wallet`);
+      }
+      return result.closed;
+    } catch {
+      return 0;
+    }
   }
 
   async buy(candidate: TokenCandidate, amountUsd: number, maxSlippagePct: number): Promise<BuyResult> {

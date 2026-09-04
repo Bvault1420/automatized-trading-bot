@@ -144,7 +144,11 @@ export default function App() {
           <Stat
             label="Gesamt-Ergebnis"
             value={pct(portfolio.totalPnlPct)}
-            sub={`Start ${usd(portfolio.startEquityUsd)}`}
+            sub={
+              (portfolio.feesUsd ?? 0) > 0
+                ? `Start ${usd(portfolio.startEquityUsd)} · Fees ${usd(portfolio.feesUsd ?? 0)}`
+                : `Start ${usd(portfolio.startEquityUsd)}`
+            }
             tone={portfolio.totalPnlPct > 0 ? 'good' : portfolio.totalPnlPct < 0 ? 'bad' : 'neutral'}
             icon={<BarChart3 className="h-3.5 w-3.5" />}
           />

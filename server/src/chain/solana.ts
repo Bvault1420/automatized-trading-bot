@@ -1,5 +1,6 @@
 import {
   Connection,
+  Keypair,
   PublicKey,
   SystemProgram,
   Transaction,
@@ -16,8 +17,8 @@ export const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9
 export const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
 export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 
-/** Reserve in SOL, damit Jupiter-Priority-Fees und Exits noch durchgehen. */
-export const GAS_RESERVE_SOL = 0.008;
+/** Reserve in SOL, damit ein Jupiter-Exit noch durchgeht. Kein Portfolioverlust. */
+export const GAS_RESERVE_SOL = 0.004;
 
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
@@ -223,3 +224,51 @@ export async function buildSplTransfer(params: {
 }
 
 export { LAMPORTS_PER_SOL };
+
+/** Schliesst leere Token-Konten und holt die ~0.002 SOL Miete zurück. */
+export async function closeEmptyTokenAccounts(
+  owner: PublicKey,
+  signer: { publicKey: PublicKey; secretKey: Uint8Array },
+): Promise<{ closed: number; signature?: string }> {
+  try {
+    const conn = solanaConnection();
+    const [legacy, token2022] = await Promise.all([
+      conn.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }),
+      conn.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID }),
+    ]);
+    const empty = [
+      ...legacy.value.map((row) => ({ row, programId: TOKEN_PROGRAM_ID })),
+      ...token2022.value.map((row) => ({ row, programId: TOKEN_2022_PROGRAM_ID })),
+    ].filter(({ row }) => {
+      const amount = String(
+        (row.account.data.parsed?.info as { tokenAmount?: { amount?: string } } | undefined)?.tokenAmount?.amount ?? '0',
+      );
+      return amount === '0';
+    });
+    if (empty.length === 0) return { closed: 0 };
+
+    const keypair = signer instanceof Keypair ? signer : Keypair.fromSecretKey(signer.secretKey);
+    const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+    const tx = new Transaction({ feePayer: owner, recentBlockhash: blockhash });
+    for (const { row, programId } of empty.slice(0, 8)) {
+      tx.add(
+        new TransactionInstruction({
+          programId,
+          keys: [
+            { pubkey: row.pubkey, isSigner: false, isWritable: true },
+            { pubkey: owner, isSigner: false, isWritable: true },
+            { pubkey: owner, isSigner: true, isWritable: false },
+          ],
+          data: Buffer.from([9]),
+        }),
+      );
+    }
+    tx.sign(keypair);
+    const signature = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 });
+    const conf = await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    if (conf.value.err) return { closed: 0 };
+    return { closed: Math.min(empty.length, 8), signature };
+  } catch {
+    return { closed: 0 };
+  }
+}

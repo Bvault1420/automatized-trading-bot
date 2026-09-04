@@ -26,6 +26,9 @@ export interface NewsItem {
   publishedAt: number;
   sentiment: number;
   matchedTerms: string[];
+  importance?: number;
+  importanceTier?: 'high' | 'medium' | 'low' | 'junk';
+  importanceWhy?: string;
 }
 
 export interface MarketIntel {
@@ -42,7 +45,13 @@ export interface MarketIntel {
     eth: { price: number; change24h: number; change7d: number } | null;
     sol: { price: number; change24h: number; change7d: number } | null;
   } | null;
-  news: { sentiment: number; bullishCount: number; bearishCount: number; items: NewsItem[] };
+  news: {
+    sentiment: number;
+    bullishCount: number;
+    bearishCount: number;
+    items: NewsItem[];
+    filteredOut?: number;
+  };
   social: {
     heat: number;
     trendingTerms: { term: string; mentions: number }[];
@@ -182,6 +191,8 @@ export interface PortfolioState {
   totalPnlPct: number;
   dayPnlPct: number;
   drawdownPct: number;
+  feesUsd?: number;
+  estimatedExitCostUsd?: number;
 }
 
 export interface BotStatus {

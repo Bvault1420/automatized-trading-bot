@@ -120,4 +120,44 @@ describe('decideExit', () => {
     const hold = decideExit(position({ lastPrice: 1.03, pnlPct: 3, peakPrice: 1.04 }), settings, snap());
     assert.equal(hold, null);
   });
+
+  it('verkauft Mini-Konten in einem Zug statt Teilgewinn', () => {
+    const tp = decideExit(
+      position({
+        costUsd: 2.5,
+        tokenAmount: 2.5,
+        lastPrice: 1.22,
+        pnlPct: 22,
+        peakPrice: 1.22,
+        feesUsd: 0,
+      }),
+      { ...settings, takeProfitPct: 16 },
+      snap(),
+      Date.now(),
+      { equityUsd: 4, nativePriceUsd: 100 },
+    );
+    assert.ok(tp);
+    assert.equal(tp.fraction, 1);
+    assert.match(tp.reason, /Gewinnmitnahme|netto/i);
+  });
+
+  it('nimmt kein „grünes“ Mini-Plus mit, das nach Fees rot wäre', () => {
+    const now = Date.now();
+    const timeStop = decideExit(
+      position({
+        costUsd: 2.61,
+        tokenAmount: 196.57,
+        lastPrice: 0.01371,
+        pnlPct: 3.7,
+        peakPrice: 0.01376,
+        feesUsd: 0,
+        openedAt: now - 18 * 60_000,
+      }),
+      { ...settings, takeProfitPct: 16, maxHoldMinutes: 18 },
+      snap(),
+      now,
+      { equityUsd: 4, nativePriceUsd: 100 },
+    );
+    assert.equal(timeStop, null);
+  });
 });

@@ -11,6 +11,7 @@ import type {
   Trade,
   TradingMode,
 } from '../types.js';
+import { estimateSellCostUsd } from './fees.js';
 
 const MAX_EQUITY_POINTS = 2000;
 
@@ -56,7 +57,7 @@ export const portfolio = {
   state(
     mode: TradingMode,
     liveCashUsd = 0,
-    extras: { walletUsd?: number; reservedUsd?: number } = {},
+    extras: { walletUsd?: number; reservedUsd?: number; nativePriceUsd?: number } = {},
   ): PortfolioState {
     const b = bucket(mode);
     const cash = this.cash(mode, liveCashUsd);
@@ -66,9 +67,26 @@ export const portfolio = {
     const equity = walletUsd + exposure;
     const open = this.openPositions(mode);
     const unrealized = open.reduce((sum, p) => sum + p.unrealizedPnlUsd, 0);
+    const recordedFees = this.positions(mode).reduce((sum, p) => sum + p.feesUsd, 0);
     const start = b.startEquityUsd > 0 ? b.startEquityUsd : equity;
     const peak = Math.max(b.peakEquityUsd, equity);
     const dayStart = b.dayStartEquityUsd > 0 ? b.dayStartEquityUsd : start;
+    const truePnl = equity - start;
+    const markPnl = b.realizedPnlUsd + unrealized;
+    // Fees, die nicht auf der Position stehen (Priority, ATA-Miete): Differenz Mark vs. Wallet.
+    const impliedFees = Math.max(0, markPnl - truePnl);
+    const feesUsd = Math.max(recordedFees, impliedFees);
+    const estimatedExitCostUsd = open.reduce((sum, p) => {
+      const micro = p.costUsd > 0 && p.costUsd <= 8;
+      return (
+        sum +
+        estimateSellCostUsd({
+          notionalUsd: p.tokenAmount * p.lastPrice,
+          nativePriceUsd: extras.nativePriceUsd ?? 100,
+          micro,
+        }).costUsd
+      );
+    }, 0);
 
     return {
       mode,
@@ -85,6 +103,8 @@ export const portfolio = {
       totalPnlPct: start > 0 ? round(((equity - start) / start) * 100, 2) : 0,
       dayPnlPct: dayStart > 0 ? round(((equity - dayStart) / dayStart) * 100, 2) : 0,
       drawdownPct: peak > 0 ? round(((peak - equity) / peak) * 100, 2) : 0,
+      feesUsd: round(feesUsd, 4),
+      estimatedExitCostUsd: round(estimatedExitCostUsd, 4),
     };
   },
 
@@ -92,7 +112,7 @@ export const portfolio = {
   markEquity(
     mode: TradingMode,
     liveCashUsd = 0,
-    extras: { walletUsd?: number; reservedUsd?: number } = {},
+    extras: { walletUsd?: number; reservedUsd?: number; nativePriceUsd?: number } = {},
   ): PortfolioState {
     const state = this.state(mode, liveCashUsd, extras);
     db.update((draft) => {

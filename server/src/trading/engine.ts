@@ -11,6 +11,7 @@ import { portfolio } from './portfolio.js';
 import { checkCandidate, checkGlobalRisk, positionSizeUsd, type RiskContext } from './risk.js';
 import { confirmLiveTape } from './entry.js';
 import { decideExit } from './exits.js';
+import { decoratePosition, estimateRoundTripCostUsd, isMicroAccount, roundTripAllowsEntry } from './fees.js';
 import { lossCooldownMs, rememberTrade } from './learning.js';
 import { PaperExecutor } from './executor/paper.js';
 import { LiveExecutor } from './executor/live.js';
@@ -38,6 +39,7 @@ class Engine {
   private lockedWarningAt = 0;
   /** Positionen die gerade verkauft werden – verhindert doppelte Orders. */
   private selling = new Set<string>();
+  private lastAtaReclaimAt = 0;
 
   get settings(): BotSettings {
     return db.data.settings;
@@ -226,7 +228,7 @@ class Engine {
 
   private async liveMarks(): Promise<{
     availableUsd: number;
-    extras: { walletUsd?: number; reservedUsd?: number };
+    extras: { walletUsd?: number; reservedUsd?: number; nativePriceUsd?: number };
   }> {
     if (this.mode !== 'live') {
       return { availableUsd: 0, extras: {} };
@@ -234,7 +236,7 @@ class Engine {
     const snap = await liveExecutor.snapshotUsd();
     return {
       availableUsd: snap.availableUsd,
-      extras: { walletUsd: snap.walletUsd, reservedUsd: snap.reservedUsd },
+      extras: { walletUsd: snap.walletUsd, reservedUsd: snap.reservedUsd, nativePriceUsd: snap.nativePriceUsd },
     };
   }
 
@@ -249,6 +251,7 @@ class Engine {
       availableCashUsd,
       consecutiveLosses: portfolio.consecutiveLosses(this.mode),
       cooldownUntil: this.cooldownUntil,
+      nativePriceUsd: marks.extras.nativePriceUsd ?? getIntel().macro?.sol?.price ?? 100,
     };
   }
 
@@ -276,6 +279,15 @@ class Engine {
     }
 
     await this.updatePositions();
+
+    if (this.mode === 'live' && Date.now() - this.lastAtaReclaimAt > 5 * 60_000) {
+      this.lastAtaReclaimAt = Date.now();
+      try {
+        await liveExecutor.reclaimEmptyAtas();
+      } catch {
+        // Miete bleibt liegen.
+      }
+    }
 
     const ctx = await this.riskContext();
 
@@ -317,15 +329,24 @@ class Engine {
         if (snapshot) portfolio.updatePrice(position.id, snapshot.priceUsd);
       }),
     );
-    if (open.length > 0) bus.emitEvent('positions', portfolio.openPositions(this.mode));
+    if (open.length > 0) {
+      const price = getIntel().macro?.sol?.price ?? 100;
+      bus.emitEvent(
+        'positions',
+        portfolio.openPositions(this.mode).map((p) => decoratePosition(p, price)),
+      );
+    }
   }
 
-  private async manageExits(_ctx: RiskContext): Promise<void> {
+  private async manageExits(ctx: RiskContext): Promise<void> {
     const open = portfolio.openPositions(this.mode);
     for (const position of open) {
       if (this.selling.has(position.id)) continue;
       const snapshot = await fetchPairSnapshot(position.chain, position.pairAddress);
-      const decision = decideExit(position, this.settings, snapshot);
+      const decision = decideExit(position, this.settings, snapshot, Date.now(), {
+        equityUsd: ctx.state.equityUsd,
+        nativePriceUsd: ctx.nativePriceUsd,
+      });
       if (!decision) continue;
       await this.executeSell(position, decision.fraction, decision.reason);
     }
@@ -417,6 +438,20 @@ class Engine {
       const size = positionSizeUsd(candidate, ctx);
       if (size <= 0) {
         lastBlock = `${candidate.candidate.symbol}: Positionsgröße unter Minimum`;
+        continue;
+      }
+
+      const nativePrice = ctx.nativePriceUsd ?? 100;
+      const rt = estimateRoundTripCostUsd({
+        notionalUsd: size,
+        nativePriceUsd: nativePrice,
+        liquidityUsd: candidate.candidate.liquidityUsd,
+        micro: isMicroAccount(ctx.state.equityUsd),
+        includeAtaRent: false,
+      });
+      const feeCheck = roundTripAllowsEntry(size, this.settings.takeProfitPct, rt);
+      if (!feeCheck.ok) {
+        lastBlock = `${candidate.candidate.symbol}: ${feeCheck.reason}`;
         continue;
       }
 

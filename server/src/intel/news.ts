@@ -1,6 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 import { getJson, getText } from '../util/http.js';
 import { analyzeSentiment, countMemeMentions } from './sentiment.js';
+import { annotateNewsItem, isJunkNews, newsDisplayWeight } from './importance.js';
 import { config } from '../config.js';
 import type { NewsItem } from '../types.js';
 
@@ -64,14 +65,14 @@ async function fetchFeed(url: string, source: string): Promise<NewsItem[]> {
       const publishedAt = dateRaw ? new Date(String(dateRaw)).getTime() : Date.now();
       const { score, matchedTerms } = analyzeSentiment(title);
       return [
-        {
+        annotateNewsItem({
           title,
           url: linkOf(item.link),
           source,
           publishedAt: Number.isFinite(publishedAt) ? publishedAt : Date.now(),
           sentiment: score,
           matchedTerms,
-        },
+        }),
       ];
     });
   } catch {
@@ -95,14 +96,14 @@ async function fetchCryptoPanic(): Promise<NewsItem[]> {
     const positive = (post.votes?.positive ?? 0) + (post.votes?.important ?? 0);
     const negative = (post.votes?.negative ?? 0) + (post.votes?.toxic ?? 0);
     const voteScore = positive + negative > 0 ? (positive - negative) / (positive + negative) : null;
-    return {
+    return annotateNewsItem({
       title: post.title,
       url: post.url,
       source: 'CryptoPanic',
       publishedAt: new Date(post.published_at).getTime() || Date.now(),
       sentiment: voteScore ?? score,
       matchedTerms,
-    };
+    });
   });
 }
 
@@ -112,6 +113,7 @@ export interface NewsIntel {
   bearishCount: number;
   items: NewsItem[];
   memeTerms: { term: string; mentions: number }[];
+  filteredOut: number;
 }
 
 /**
@@ -126,15 +128,25 @@ export async function fetchNews(): Promise<NewsIntel> {
   ]);
 
   const seen = new Set<string>();
-  const items = results
+  const unique = results
     .flat()
+    .map((item) => (item.importanceTier ? item : annotateNewsItem(item)))
     .filter((item) => {
       const key = item.title.toLowerCase().slice(0, 80);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
+    });
+
+  const kept = unique.filter((item) => !isJunkNews(item));
+  const filteredOut = unique.length - kept.length;
+
+  const items = kept
+    .sort((a, b) => {
+      const weightDelta = newsDisplayWeight(b) - newsDisplayWeight(a);
+      if (weightDelta !== 0) return weightDelta;
+      return b.publishedAt - a.publishedAt;
     })
-    .sort((a, b) => b.publishedAt - a.publishedAt)
     .slice(0, 60);
 
   const now = Date.now();
@@ -145,8 +157,9 @@ export async function fetchNews(): Promise<NewsIntel> {
 
   for (const item of items) {
     const ageHours = Math.max(0, (now - item.publishedAt) / 3_600_000);
-    // Sehr frische Meldungen (Minuten) dominieren, aeltere klingen in ~2h ab.
-    const weight = Math.exp(-ageHours / 2);
+    const freshness = Math.exp(-ageHours / 2);
+    const importance = 0.35 + 0.65 * (item.importance ?? 0.45);
+    const weight = freshness * importance;
     if (item.sentiment !== 0) {
       weightedSum += item.sentiment * weight;
       weightTotal += weight;
@@ -161,5 +174,6 @@ export async function fetchNews(): Promise<NewsIntel> {
     bearishCount,
     items,
     memeTerms: countMemeMentions(items.map((i) => i.title)),
+    filteredOut,
   };
 }

@@ -1,3 +1,4 @@
+import { isMicroAccount, estimateSellCostUsd, netAfterEstimatedSell } from './fees.js';
 import type { BotSettings, PairSnapshot, Position } from '../types.js';
 
 export interface ExitDecision {
@@ -6,17 +7,49 @@ export interface ExitDecision {
   urgent: boolean;
 }
 
+export interface ExitCostContext {
+  equityUsd?: number;
+  nativePriceUsd?: number;
+}
+
+function sellCostUsd(position: Position, snapshot: PairSnapshot | null, ctx?: ExitCostContext): number {
+  const notional = position.tokenAmount * position.lastPrice;
+  const micro = isMicroAccount(ctx?.equityUsd ?? 0) || isMicroAccount(position.costUsd);
+  return estimateSellCostUsd({
+    notionalUsd: notional,
+    nativePriceUsd: ctx?.nativePriceUsd ?? 100,
+    liquidityUsd: snapshot?.liquidityUsd ?? 0,
+    micro,
+  }).costUsd;
+}
+
+function useSingleExit(position: Position, ctx?: ExitCostContext): boolean {
+  return isMicroAccount(ctx?.equityUsd ?? 0) || isMicroAccount(position.costUsd);
+}
+
+function minNetProfitPct(settings: BotSettings): number {
+  return Math.max(2, settings.takeProfitPct * 0.25);
+}
+
 /**
  * Ausstiegsregeln, bewusst defensiv: bei Memecoins entsteht der typische
  * Totalverlust durch Aussitzen, nicht durch zu frühes Mitnehmen.
  *
  * Reihenfolge: Notfall → Verlust begrenzen → These gebrochen → Gewinne sichern.
+ *
+ * Gewinnmitnahmen laufen erst, wenn das Plus nach geschätzten Verkaufskosten
+ * (Jupiter-Impact, Swap-Fee, SOL-Tx) noch klar positiv ist. Auf Mini-Konten
+ * ein Exit statt Teilverkäufen – jede Extra-Tx frisst sonst den Gewinn.
+ *
+ * Es gibt keine Garantie, dass Gas < Gewinn. Kurse können zwischen Ticks kippen.
+ * Wir weigern uns nur, ein „grünes“ Plus zu verkaufen, das nach Fees rot wäre.
  */
 export function decideExit(
   position: Position,
   settings: BotSettings,
   snapshot: PairSnapshot | null,
   now = Date.now(),
+  costs?: ExitCostContext,
 ): ExitDecision | null {
   const pnlPct = position.pnlPct;
   const ageMinutes = (now - position.openedAt) / 60_000;
@@ -24,6 +57,9 @@ export function decideExit(
     position.peakPrice > 0 ? ((position.peakPrice - position.lastPrice) / position.peakPrice) * 100 : 0;
   const peakPnlPct =
     position.entryPrice > 0 ? ((position.peakPrice - position.entryPrice) / position.entryPrice) * 100 : 0;
+  const micro = useSingleExit(position, costs);
+  const exitCost = sellCostUsd(position, snapshot, costs);
+  const net = netAfterEstimatedSell(position, exitCost);
 
   if (snapshot && snapshot.liquidityUsd > 0 && snapshot.liquidityUsd < settings.minLiquidityUsd * 0.4) {
     return { fraction: 1, reason: 'Liquidität eingebrochen – Notausstieg', urgent: true };
@@ -69,12 +105,22 @@ export function decideExit(
     return { fraction: 1, reason: `1h-Trend gegen die Position (${snapshot.priceChangeH1.toFixed(1)}%)`, urgent: true };
   }
 
-  // Gewinnmitnahme: zuerst den Grossteil vom Tisch, Rest darf laufen.
+  const netEnough = net.netPct >= minNetProfitPct(settings);
+
+  // Gewinnmitnahme: Mini-Konto verkauft komplett, größere Konten dürfen staffeln.
   if (position.partialsTaken === 0 && pnlPct >= settings.takeProfitPct) {
-    return { fraction: 0.65, reason: `Teilgewinn bei +${pnlPct.toFixed(1)}%`, urgent: false };
+    if (!netEnough) return null;
+    return {
+      fraction: micro ? 1 : 0.65,
+      reason: micro
+        ? `Gewinnmitnahme bei +${pnlPct.toFixed(1)}% (netto ~${net.netPct.toFixed(1)}% nach Fees)`
+        : `Teilgewinn bei +${pnlPct.toFixed(1)}%`,
+      urgent: false,
+    };
   }
 
-  if (position.partialsTaken >= 1 && pnlPct >= settings.takeProfitPct * 1.8) {
+  if (!micro && position.partialsTaken >= 1 && pnlPct >= settings.takeProfitPct * 1.8) {
+    if (!netEnough) return null;
     return { fraction: 0.5, reason: `Zweiter Teilgewinn bei +${pnlPct.toFixed(1)}%`, urgent: false };
   }
 
@@ -82,6 +128,7 @@ export function decideExit(
   const trailWidth =
     peakPnlPct >= settings.takeProfitPct * 1.4 ? settings.trailingStopPct : Math.max(5, settings.trailingStopPct * 0.75);
   if (trailingArmed && drawdownFromPeak >= trailWidth) {
+    if (net.netUsd <= 0 && pnlPct > 0) return null;
     return {
       fraction: 1,
       reason: `Trailing-Stop – ${drawdownFromPeak.toFixed(1)}% vom Hoch zurück`,
@@ -91,6 +138,7 @@ export function decideExit(
 
   // Gewinn sichern, sobald Momentum kippt – nicht erst tief im Plus.
   if (pnlPct > 5 && snapshot && snapshot.priceChangeM5 <= -6) {
+    if (net.netUsd <= 0) return null;
     return { fraction: 1, reason: 'Momentum gedreht – Gewinn gesichert', urgent: true };
   }
 
@@ -104,11 +152,16 @@ export function decideExit(
   }
 
   if (ageMinutes >= settings.maxHoldMinutes && pnlPct < 8) {
-    return {
-      fraction: 1,
-      reason: `Zeitstopp nach ${Math.round(ageMinutes)} Min. (${pnlPct.toFixed(1)}%)`,
-      urgent: false,
-    };
+    // Mini-Grün nach Fees oft rot: nicht per Zeitstopp verschenken, SL/TP bleiben.
+    if (net.netUsd <= 0 && pnlPct > -2) {
+      // weiter halten bis echter TP, SL oder harte Haltedauer
+    } else {
+      return {
+        fraction: 1,
+        reason: `Zeitstopp nach ${Math.round(ageMinutes)} Min. (${pnlPct.toFixed(1)}%)`,
+        urgent: false,
+      };
+    }
   }
 
   if (ageMinutes >= settings.maxHoldMinutes * 2.5) {

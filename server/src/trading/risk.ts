@@ -1,5 +1,6 @@
 import { clamp } from '../util/num.js';
 import { effectiveMinScore, marketEntryBlocked } from './entry.js';
+import { isMicroAccount } from './fees.js';
 import { portfolio } from './portfolio.js';
 import type { BotSettings, MarketIntel, PortfolioState, ScoredCandidate } from '../types.js';
 
@@ -10,6 +11,7 @@ export interface RiskContext {
   availableCashUsd: number;
   consecutiveLosses: number;
   cooldownUntil: number | null;
+  nativePriceUsd?: number;
 }
 
 export interface RiskVerdict {
@@ -20,12 +22,8 @@ export interface RiskVerdict {
 }
 
 const MIN_TRADE_USD = 1;
-/** Unter diesem Equity wird nur 1 Ticket mit dem Grossteil des Bargelds gesetzt. */
-const MICRO_EQUITY_USD = 8;
 
-export function isMicroAccount(equityUsd: number): boolean {
-  return equityUsd > 0 && equityUsd <= MICRO_EQUITY_USD;
-}
+export { isMicroAccount } from './fees.js';
 
 /** Globale Schutzschalter – gelten unabhaengig vom einzelnen Kandidaten. */
 export function checkGlobalRisk(ctx: RiskContext): RiskVerdict {

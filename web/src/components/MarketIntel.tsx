@@ -141,6 +141,7 @@ export function NewsPanel({ intel }: { intel: Intel }) {
           {intel.social.freshPosts > 0 && (
             <Chip tone="emerald">{intel.social.freshPosts} Posts / {intel.social.freshWindowMinutes} Min.</Chip>
           )}
+          {intel.news.filteredOut ? <Chip tone="slate">{intel.news.filteredOut} Lärm raus</Chip> : null}
           <Chip tone="emerald">{intel.news.bullishCount} bullisch</Chip>
           <Chip tone="rose">{intel.news.bearishCount} bärisch</Chip>
         </div>
@@ -180,7 +181,11 @@ export function NewsPanel({ intel }: { intel: Intel }) {
             <div className="min-w-0 flex-1">
               <p className="line-clamp-2 text-xs leading-relaxed text-slate-300">{item.title}</p>
               <p className="mt-0.5 text-[10px] text-slate-600">
+                {item.importanceTier === 'high' && (
+                  <span className="mr-1.5 font-semibold uppercase tracking-wider text-emerald-400/90">Wichtig</span>
+                )}
                 {item.source} · {timeAgo(item.publishedAt)}
+                {item.importanceWhy ? ` · ${item.importanceWhy}` : ''}
               </p>
             </div>
           </a>

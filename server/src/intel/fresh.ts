@@ -1,6 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 import { getJson, getText } from '../util/http.js';
 import { analyzeSentiment } from './sentiment.js';
+import { annotateNewsItem, isJunkNews } from './importance.js';
 import { clamp } from '../util/num.js';
 import type { NewsItem } from '../types.js';
 
@@ -72,14 +73,14 @@ function redditItem(title: string, url: string, publishedAt: number, sub: string
   if (!title) return [];
   const { score, matchedTerms } = analyzeSentiment(title);
   return [
-    {
+    annotateNewsItem({
       title,
       url,
       source: `Reddit r/${sub}`,
       publishedAt: Number.isFinite(publishedAt) ? publishedAt : Date.now(),
       sentiment: score,
       matchedTerms,
-    },
+    }),
   ];
 }
 
@@ -139,14 +140,14 @@ async function fetchDexProfiles(): Promise<NewsItem[]> {
     if (!text) return [];
     const { score, matchedTerms } = analyzeSentiment(text);
     return [
-      {
+      annotateNewsItem({
         title: text.slice(0, 180),
         url: profile.url ?? '',
         source: `DexScreener Profil (${profile.chainId ?? '?'})`,
         publishedAt: now,
         sentiment: score,
         matchedTerms,
-      },
+      }),
     ];
   });
 }
@@ -161,10 +162,12 @@ export async function fetchFresh(): Promise<FreshIntel> {
     fetchDexProfiles(),
   ]);
 
-  const posts = results.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
+  const posts = results
+    .flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
+    .map((item) => (item.importanceTier ? item : annotateNewsItem(item)));
   const now = Date.now();
   const windowMs = 30 * 60_000;
-  const recent = posts.filter((p) => now - p.publishedAt <= windowMs);
+  const recent = posts.filter((p) => now - p.publishedAt <= windowMs && !isJunkNews(p));
   const mentionMap = new Map<string, { mentions: number; newest: number }>();
   for (const post of recent) {
     collectTickers(`${post.title} ${post.matchedTerms.join(' ')}`, mentionMap, post.publishedAt);
@@ -183,7 +186,10 @@ export async function fetchFresh(): Promise<FreshIntel> {
   const heat = clamp(freshCount / 40, 0, 1);
 
   return {
-    posts: [...posts].sort((a, b) => b.publishedAt - a.publishedAt).slice(0, 40),
+    posts: posts
+      .filter((p) => !isJunkNews(p))
+      .sort((a, b) => b.publishedAt - a.publishedAt)
+      .slice(0, 40),
     mentions,
     freshCount,
     windowMinutes: 30,

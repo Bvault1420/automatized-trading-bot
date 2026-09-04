@@ -20,7 +20,7 @@ function emptyIntel(): MarketIntel {
     signals: [],
     fearGreed: null,
     macro: null,
-    news: { sentiment: 0, bullishCount: 0, bearishCount: 0, items: [] },
+    news: { sentiment: 0, bullishCount: 0, bearishCount: 0, items: [], filteredOut: 0 },
     social: { heat: 0.5, trendingTerms: [], freshPosts: 0, freshWindowMinutes: 30 },
     narrative: 'Marktdaten werden geladen …',
   };
@@ -115,7 +115,14 @@ export async function refreshIntel(): Promise<MarketIntel> {
   const [fearGreed, macro, news, social, fresh] = await Promise.all([
     fetchFearGreed().catch(() => null),
     fetchMacro().catch(() => null),
-    fetchNews().catch(() => ({ sentiment: 0, bullishCount: 0, bearishCount: 0, items: [], memeTerms: [] })),
+    fetchNews().catch(() => ({
+      sentiment: 0,
+      bullishCount: 0,
+      bearishCount: 0,
+      items: [],
+      memeTerms: [],
+      filteredOut: 0,
+    })),
     fetchSocial().catch(() => ({
       heat: 0,
       trendingTerms: [],
@@ -211,7 +218,8 @@ export async function refreshIntel(): Promise<MarketIntel> {
       'News-Sentiment',
       news.sentiment,
       news.items.length > 10 ? 0.75 : 0.4,
-      `${news.items.length} Schlagzeilen · ${news.bullishCount} bullisch / ${news.bearishCount} bärisch`,
+      `${news.items.length} gewichtete Schlagzeilen · ${news.bullishCount} bullisch / ${news.bearishCount} bärisch` +
+        (news.filteredOut > 0 ? ` · ${news.filteredOut} Lärm raus` : ''),
       'CoinDesk, Cointelegraph, Decrypt, Google News',
     ),
   );
@@ -282,8 +290,14 @@ export async function refreshIntel(): Promise<MarketIntel> {
       sentiment: news.sentiment,
       bullishCount: news.bullishCount,
       bearishCount: news.bearishCount,
+      filteredOut: news.filteredOut,
       items: [...fresh.posts, ...news.items]
-        .sort((a, b) => b.publishedAt - a.publishedAt)
+        .sort((a, b) => {
+          const tierRank = (item: (typeof news.items)[number]) =>
+            item.importanceTier === 'high' ? 3 : item.importanceTier === 'medium' ? 2 : item.importanceTier === 'low' ? 1 : 0;
+          const delta = tierRank(b) - tierRank(a);
+          return delta !== 0 ? delta : b.publishedAt - a.publishedAt;
+        })
         .slice(0, 40),
     },
     social: {

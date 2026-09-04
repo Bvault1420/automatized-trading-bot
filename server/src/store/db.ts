@@ -58,7 +58,7 @@ const LEGACY_FACTORY_SETTINGS = {
   minEntryScore: 55,
 } as const;
 
-const STRATEGY_VERSION = 5;
+const STRATEGY_VERSION = 6;
 
 function migrateSettings(parsed: DbShape, fresh: BotSettings): BotSettings {
   const settings = { ...fresh, ...parsed.settings };
@@ -102,6 +102,18 @@ function migrateLiveEquityDisplay(parsed: DbShape, draft: DbShape): void {
   draft.live.startEquityUsd = 0;
   draft.live.dayStartEquityUsd = 0;
   draft.live.peakEquityUsd = 0;
+}
+
+/** Erste Live-Punkte hatten Equity = Wallet minus Gas-Reserve. Das war kein Verlust. */
+function migrateLiveCurveReserveBug(parsed: DbShape, draft: DbShape): void {
+  if ((parsed.version ?? 1) >= 6) return;
+  const start = draft.live.startEquityUsd;
+  if (start <= 0) return;
+  draft.equityCurve = draft.equityCurve.filter((point) => {
+    if (point.mode !== 'live') return true;
+    if (point.exposure === 0 && point.equity < start * 0.85) return false;
+    return true;
+  });
 }
 
 function migratePaperForMicro(parsed: DbShape, draft: DbShape): void {
@@ -187,6 +199,7 @@ function load(): DbShape {
       };
       migratePaperForMicro(parsed, merged);
       migrateLiveEquityDisplay(parsed, merged);
+      migrateLiveCurveReserveBug(parsed, merged);
       return merged;
     }
   } catch {

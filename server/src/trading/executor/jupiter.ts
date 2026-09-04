@@ -15,6 +15,7 @@ export interface JupiterQuote {
   otherAmountThreshold: string;
   slippageBps: number;
   swapUsdValue?: string;
+  priceImpactPct?: string | number;
 }
 
 export interface JupiterSwapResult {
@@ -58,11 +59,19 @@ export async function quoteSwap(inputMint: string, outputMint: string, amount: b
   return data as unknown as JupiterQuote;
 }
 
-export async function executeSwap(inputMint: string, outputMint: string, amount: bigint, slippagePct: number): Promise<JupiterSwapResult> {
+export async function executeSwap(
+  inputMint: string,
+  outputMint: string,
+  amount: bigint,
+  slippagePct: number,
+  opts: { maxLamports?: number; priorityLevel?: 'medium' | 'high' | 'veryHigh' } = {},
+): Promise<JupiterSwapResult> {
   const keypair = solanaWallet.requireKeypair();
   const quote = await quoteSwap(inputMint, outputMint, amount, slippagePct);
   const inDecimals = inputMint === WSOL_MINT ? 9 : await mintDecimals(inputMint);
   const outDecimals = outputMint === WSOL_MINT ? 9 : await mintDecimals(outputMint);
+  const maxLamports = opts.maxLamports ?? 2_000_000;
+  const priorityLevel = opts.priorityLevel ?? 'high';
 
   const res = await fetch(`${JUPITER}/swap`, {
     method: 'POST',
@@ -74,9 +83,9 @@ export async function executeSwap(inputMint: string, outputMint: string, amount:
       dynamicComputeUnitLimit: true,
       prioritizationFeeLamports: {
         priorityLevelWithMaxLamports: {
-          maxLamports: 2_000_000,
+          maxLamports,
           global: false,
-          priorityLevel: 'high',
+          priorityLevel,
         },
       },
     }),

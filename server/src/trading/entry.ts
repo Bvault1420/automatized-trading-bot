@@ -57,6 +57,8 @@ export function confirmLiveTape(
   return { ok: true, reason: 'Tape bestätigt' };
 }
 
+export { roundTripAllowsEntry } from './fees.js';
+
 /**
  * Effektive Einstiegsschwelle: Basis-Score plus Aufschläge, wenn der Markt
  * oder die eigene jüngste Trefferquote gegen neue Trades spricht.
