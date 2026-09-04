@@ -146,10 +146,10 @@ export function SettingsPanel({
       bodyClassName="p-5 space-y-4"
     >
       <p className="rounded-xl border border-emerald-500/15 bg-emerald-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-slate-400">
-        Die Strategie filtert Dumps, Late-Chases und schwache Tapes vor dem Kauf,
-        nimmt Gewinne früher mit und schneidet gescheiterte Einstiege, bevor der
-        Stop-Loss greift. Weniger Trades, höhere Qualität – keine Garantie, aber
-        das ist der Hebel für eine bessere Trefferquote.
+        Die Strategie filtert Abstürze, zu späte Einstiege und schwache
+        Orderbücher vor dem Kauf, nimmt Gewinne früher mit und schneidet
+        gescheiterte Trades, bevor der Stop-Loss greift. Weniger Trades, höhere
+        Qualität – keine Garantie, aber das ist der Hebel für die Trefferquote.
       </p>
       <div className="space-y-3.5">
         {FIELDS.map((field) => {
