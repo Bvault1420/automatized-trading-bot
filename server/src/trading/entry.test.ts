@@ -140,7 +140,7 @@ describe('effectiveMinScore', () => {
       entryReason: '',
       exitReason: '',
     })) satisfies Trade[];
-    const cold = effectiveMinScore(settings, intel({ regime: 'risk-on' }), trades, 0);
+    const cold = effectiveMinScore(settings, intel({ regime: 'risk-on' }), trades, 3);
     assert.ok(cold > base);
   });
 });

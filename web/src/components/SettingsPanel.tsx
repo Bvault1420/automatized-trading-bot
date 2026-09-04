@@ -18,7 +18,7 @@ const FIELDS: Field[] = [
   {
     key: 'minEntryScore',
     label: 'Mindest-Score',
-    hint: 'Höher = deutlich selektiver. Unter 60 rutschen schwache Memes durch',
+    hint: '48–55 = der Bot handelt wirklich. Über 62 bleibt er oft stundenlang stehen',
     min: 30, max: 90, step: 1, unit: 'Pkt.',
   },
   {
@@ -146,9 +146,9 @@ export function SettingsPanel({
       bodyClassName="p-5 space-y-4"
     >
       <p className="rounded-xl border border-emerald-500/15 bg-emerald-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-slate-400">
-        Kalibriert für ein Mini-Konto (~4 €): eine Position, ~78 % Einsatz,
-        enge Stops. Der Bot handelt sonst gar nicht, weil 14 % von 4 € unter
-        1 $ liegen. Keine Gewinn-Garantie – Gebühren fressen hier relativ viel.
+        Mini-Konto (~4 €), eine Position. Score 48 und lockere Hart-Filter,
+        damit er nicht nur scannt, sondern auch kauft. Honeypots und harte
+        Dumps bleiben draußen – keine Gewinn-Garantie.
       </p>
       <div className="space-y-3.5">
         {FIELDS.map((field) => {

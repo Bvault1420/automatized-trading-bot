@@ -58,7 +58,7 @@ const LEGACY_FACTORY_SETTINGS = {
   minEntryScore: 55,
 } as const;
 
-const STRATEGY_VERSION = 4;
+const STRATEGY_VERSION = 5;
 
 function migrateSettings(parsed: DbShape, fresh: BotSettings): BotSettings {
   const settings = { ...fresh, ...parsed.settings };
@@ -87,6 +87,11 @@ function migrateSettings(parsed: DbShape, fresh: BotSettings): BotSettings {
     if (next[key] === LEGACY_FACTORY_SETTINGS[key]) {
       next[key] = fresh[key];
     }
+  }
+  if ((parsed.version ?? 1) < 5) {
+    next.minEntryScore = fresh.minEntryScore;
+    next.minLiquidityUsd = fresh.minLiquidityUsd;
+    next.maxSlippagePct = fresh.maxSlippagePct;
   }
   return next;
 }

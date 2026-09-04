@@ -45,12 +45,12 @@ export function hardRejections(c: TokenCandidate, security: SecurityReport, ctx:
   if (c.liquidityUsd < ctx.minLiquidityUsd) {
     reasons.push(`Liquidität zu gering ($${Math.round(c.liquidityUsd).toLocaleString('de-DE')})`);
   }
-  if (c.volume.h1 < 8_000) reasons.push('Zu wenig Handelsvolumen (1h)');
+  if (c.volume.h1 < 3_000) reasons.push('Zu wenig Handelsvolumen (1h)');
 
   const txnsH1 = c.txns.h1.buys + c.txns.h1.sells;
-  if (txnsH1 < 35) reasons.push('Zu wenige Transaktionen (1h)');
+  if (txnsH1 < 15) reasons.push('Zu wenige Transaktionen (1h)');
 
-  if (c.ageHours < 1) reasons.push('Paar zu jung (< 1 Std.) – Rug-Fenster');
+  if (c.ageHours < 0.2) reasons.push('Paar zu jung (< 12 Min.) – Rug-Fenster');
   if (c.ageHours > 21 * 24 && c.volume.h1 < 25_000 && c.priceChange.h24 < 8) {
     reasons.push('Altes, ausgereiztes Paar ohne frische Nachfrage');
   }
@@ -65,18 +65,18 @@ export function hardRejections(c: TokenCandidate, security: SecurityReport, ctx:
   }
 
   const h1Ratio = buyRatio(c.txns.h1.buys, c.txns.h1.sells);
-  if (h1Ratio < 0.48) reasons.push(`Verkäufer dominieren 1h (${(h1Ratio * 100).toFixed(0)}% Käufe)`);
+  if (h1Ratio < 0.4) reasons.push(`Verkäufer dominieren 1h (${(h1Ratio * 100).toFixed(0)}% Käufe)`);
 
   const m5Total = c.txns.m5.buys + c.txns.m5.sells;
-  if (m5Total >= 10 && c.txns.m5.sells > c.txns.m5.buys * 1.45) {
+  if (m5Total >= 16 && c.txns.m5.sells > c.txns.m5.buys * 2) {
     reasons.push('Aktuelle Verteilung – mehr Verkäufe als Käufe');
   }
 
-  if (c.liquidityUsd > 0 && c.marketCap / c.liquidityUsd > 55) {
+  if (c.liquidityUsd > 0 && c.marketCap / c.liquidityUsd > 140) {
     reasons.push('Marktkapitalisierung im Verhältnis zur Liquidität zu hoch');
   }
 
-  if (c.volume.h24 > 0 && c.volume.h1 < c.volume.h24 / 30 && c.priceChange.m5 < 4) {
+  if (c.volume.h24 > 0 && c.volume.h1 < c.volume.h24 / 60 && c.priceChange.m5 < -2) {
     reasons.push('Volumen stirbt ab');
   }
 

@@ -383,19 +383,31 @@ class Engine {
       return;
     }
 
-    const candidates = getCandidates();
+    const candidates = [...getCandidates()].sort((a, b) => {
+      if (a.tradable !== b.tradable) return a.tradable ? -1 : 1;
+      return b.score - a.score;
+    });
     if (candidates.length === 0) return;
 
+    let lastBlock = '';
     for (const candidate of candidates) {
       const verdict = checkCandidate(candidate, ctx);
-      if (!verdict.allowed) continue;
+      if (!verdict.allowed) {
+        lastBlock = `${candidate.candidate.symbol}: ${verdict.reason}`;
+        continue;
+      }
 
       const size = positionSizeUsd(candidate, ctx);
-      if (size <= 0) continue;
+      if (size <= 0) {
+        lastBlock = `${candidate.candidate.symbol}: Positionsgröße unter Minimum`;
+        continue;
+      }
 
       const opened = await this.executeBuy(candidate, size);
-      if (opened) return; // pro Tick maximal eine neue Position
+      if (opened) return;
+      lastBlock = `${candidate.candidate.symbol}: Ausführung abgebrochen`;
     }
+    if (lastBlock) log.info(`Kein Einstieg in diesem Tick – ${lastBlock}`);
   }
 
   private async executeBuy(scored: ScoredCandidate, amountUsd: number): Promise<boolean> {

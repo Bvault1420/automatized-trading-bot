@@ -118,7 +118,7 @@ describe('scoreCandidate', () => {
     );
     assert.equal(sellers.tradable, false);
 
-    const newborn = scoreCandidate(candidate({ ageHours: 0.4 }), security(), ctx());
+    const newborn = scoreCandidate(candidate({ ageHours: 0.1 }), security(), ctx());
     assert.equal(newborn.tradable, false);
   });
 

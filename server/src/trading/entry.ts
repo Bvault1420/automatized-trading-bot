@@ -41,16 +41,16 @@ export function confirmLiveTape(
     }
   }
 
-  if (snapshot.priceChangeM5 <= -3) {
+  if (snapshot.priceChangeM5 <= -10) {
     return { ok: false, reason: `5-Minuten-Tape negativ (${snapshot.priceChangeM5.toFixed(1)}%)` };
   }
 
-  if (snapshot.priceChangeH1 <= -12) {
+  if (snapshot.priceChangeH1 <= -22) {
     return { ok: false, reason: `1h-Trend bereits gebrochen (${snapshot.priceChangeH1.toFixed(1)}%)` };
   }
 
   const tapeTotal = snapshot.buysM5 + snapshot.sellsM5;
-  if (tapeTotal >= 12 && snapshot.sellsM5 > snapshot.buysM5 * 1.5) {
+  if (tapeTotal >= 20 && snapshot.sellsM5 > snapshot.buysM5 * 2.2) {
     return { ok: false, reason: 'Verkäufer dominieren den aktuellen Tape' };
   }
 
@@ -68,29 +68,9 @@ export function effectiveMinScore(
   consecutiveLosses: number,
 ): number {
   let min = settings.minEntryScore;
-
-  if (intel.regime === 'risk-off') min += 10;
-  else if (intel.regime === 'neutral') min += 3;
-
-  const btc = intel.macro?.btc;
-  if (btc) {
-    if (btc.change24h <= -8) min += 14;
-    else if (btc.change24h <= -4) min += 7;
-    else if (btc.change24h <= -2) min += 3;
-  }
-
-  if (consecutiveLosses >= 3) min += 8;
-  else if (consecutiveLosses >= 2) min += 5;
-
-  const window = recentTrades.slice(-8);
-  if (window.length >= 5) {
-    const wins = window.filter((t) => t.pnlUsd > 0).length;
-    const wr = wins / window.length;
-    if (wr < 0.3) min += 8;
-    else if (wr < 0.4) min += 4;
-  }
-
-  return clamp(min, 0, 92);
+  if (intel.regime === 'risk-off') min += 4;
+  if (consecutiveLosses >= 3) min += 4;
+  return clamp(min, 0, 88);
 }
 
 /** BTC-Crash: neue Einstiege pausieren, offene Positionen bleiben geschützt. */

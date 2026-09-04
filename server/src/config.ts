@@ -128,13 +128,13 @@ export const config = {
     maxHoldMinutes: num('MAX_HOLD_MINUTES', 18),
     dailyLossLimitPct: num('DAILY_LOSS_LIMIT_PCT', 28),
     maxDrawdownPct: num('MAX_DRAWDOWN_PCT', 40),
-    minLiquidityUsd: num('MIN_LIQUIDITY_USD', 30_000),
-    maxSlippagePct: num('MAX_SLIPPAGE_PCT', 4),
+    minLiquidityUsd: num('MIN_LIQUIDITY_USD', 15_000),
+    maxSlippagePct: num('MAX_SLIPPAGE_PCT', 8),
     /**
      * Kalibriert fuer ein Mini-Konto (~4 €): eine Position, hoher Anteil,
      * sonst bleibt die Order unter der 1-Dollar-Mindestgroesse.
      */
-    minEntryScore: num('MIN_ENTRY_SCORE', 62),
+    minEntryScore: num('MIN_ENTRY_SCORE', 48),
     /** Gebuehren-Annahme im Paper-Modus (DEX-Fee pro Seite, in Prozent). */
     paperFeePct: num('PAPER_FEE_PCT', 0.3),
   },
