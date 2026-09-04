@@ -10,8 +10,18 @@ export interface ScoringContext {
   cooldowns: Map<string, number>;
 }
 
-/** Harte Ausschlusskriterien – hier wird nicht abgewogen, sondern abgelehnt. */
-function hardRejections(c: TokenCandidate, security: SecurityReport, ctx: ScoringContext): string[] {
+const JUNK_NAME = /\b(test|scam|rug|airdrop|claim|free mint|honeypot)\b/i;
+
+function buyRatio(buys: number, sells: number): number {
+  const total = buys + sells;
+  return total > 0 ? buys / total : 0.5;
+}
+
+/**
+ * Harte Ausschlusskriterien – hier wird nicht abgewogen, sondern abgelehnt.
+ * Ziel: Dump, Late-Chase und Thin-Tape gar nicht erst in den Einstieg lassen.
+ */
+export function hardRejections(c: TokenCandidate, security: SecurityReport, ctx: ScoringContext): string[] {
   const reasons: string[] = [];
   const key = `${c.chain}:${c.tokenAddress.toLowerCase()}`;
 
@@ -26,41 +36,68 @@ function hardRejections(c: TokenCandidate, security: SecurityReport, ctx: Scorin
     reasons.push('Sicherheitsprüfung nicht verfügbar – kein Live-Kauf');
   }
   if (!security.ok) reasons.push('Sicherheitsprüfung nicht bestanden');
-  if (security.sellTaxPct > 12) reasons.push(`Verkaufssteuer zu hoch (${security.sellTaxPct.toFixed(1)}%)`);
+  if (security.sellTaxPct > 10) reasons.push(`Verkaufssteuer zu hoch (${security.sellTaxPct.toFixed(1)}%)`);
+  if (security.top10HolderPct >= 75) {
+    reasons.push(`Top-10-Wallets halten ${security.top10HolderPct.toFixed(0)}%`);
+  }
 
   if (c.liquidityUsd < ctx.minLiquidityUsd) {
     reasons.push(`Liquidität zu gering ($${Math.round(c.liquidityUsd).toLocaleString('de-DE')})`);
   }
-  if (c.volume.h1 < 5_000) reasons.push('Zu wenig Handelsvolumen (1h)');
+  if (c.volume.h1 < 8_000) reasons.push('Zu wenig Handelsvolumen (1h)');
 
   const txnsH1 = c.txns.h1.buys + c.txns.h1.sells;
-  if (txnsH1 < 25) reasons.push('Zu wenige Transaktionen (1h)');
+  if (txnsH1 < 35) reasons.push('Zu wenige Transaktionen (1h)');
 
-  if (c.ageHours < 0.25) reasons.push('Paar zu jung (< 15 Min.)');
-  if (c.priceChange.m5 > 120) reasons.push('Parabolischer Anstieg – Einstieg zu spät');
-  if (c.priceChange.h24 < -55) reasons.push('Token im freien Fall (24h)');
+  if (c.ageHours < 1) reasons.push('Paar zu jung (< 1 Std.) – Rug-Fenster');
+  if (c.ageHours > 21 * 24 && c.volume.h1 < 25_000 && c.priceChange.h24 < 8) {
+    reasons.push('Altes, ausgereiztes Paar ohne frische Nachfrage');
+  }
 
-  // Hohe Marktkapitalisierung bei duenner Liquiditaet = kaum verkaufbar.
-  if (c.liquidityUsd > 0 && c.marketCap / c.liquidityUsd > 80) {
+  if (c.priceChange.m5 > 55) reasons.push('Parabolischer 5-Minuten-Anstieg – Einstieg zu spät');
+  if (c.priceChange.h1 > 85 && c.priceChange.m5 > 18) reasons.push('Bewegung überhitzt – Late-Chase');
+  if (c.priceChange.m5 < -8) reasons.push('Aktueller 5-Minuten-Dump');
+  if (c.priceChange.h1 < -16) reasons.push('1h-Trend bereits gebrochen');
+  if (c.priceChange.h24 < -40) reasons.push('Token im freien Fall (24h)');
+  if (c.priceChange.h6 < -28 && c.priceChange.m5 > 2) {
+    reasons.push('Dead-Cat-Bounce nach 6h-Abfall');
+  }
+
+  const h1Ratio = buyRatio(c.txns.h1.buys, c.txns.h1.sells);
+  if (h1Ratio < 0.48) reasons.push(`Verkäufer dominieren 1h (${(h1Ratio * 100).toFixed(0)}% Käufe)`);
+
+  const m5Total = c.txns.m5.buys + c.txns.m5.sells;
+  if (m5Total >= 10 && c.txns.m5.sells > c.txns.m5.buys * 1.45) {
+    reasons.push('Aktuelle Verteilung – mehr Verkäufe als Käufe');
+  }
+
+  if (c.liquidityUsd > 0 && c.marketCap / c.liquidityUsd > 55) {
     reasons.push('Marktkapitalisierung im Verhältnis zur Liquidität zu hoch');
+  }
+
+  if (c.volume.h24 > 0 && c.volume.h1 < c.volume.h24 / 30 && c.priceChange.m5 < 4) {
+    reasons.push('Volumen stirbt ab');
+  }
+
+  if (JUNK_NAME.test(c.symbol) || JUNK_NAME.test(c.name)) {
+    reasons.push('Name/Symbol wirkt unseriös');
   }
 
   return reasons;
 }
 
 function momentumScore(c: TokenCandidate): { value: number; detail: string } {
-  // Kurzfristiges Momentum dominiert, laengere Fenster bestaetigen den Trend.
-  const m5 = normalize(c.priceChange.m5, -3, 12);
-  const h1 = normalize(c.priceChange.h1, -8, 35);
-  const h6 = normalize(c.priceChange.h6, -20, 70);
-  let value = 0.45 * m5 + 0.35 * h1 + 0.2 * h6;
+  // Sweet Spot: gesunde Bewegung, kein Chase in die Spitze.
+  const m5 = bell(c.priceChange.m5, 7, 9);
+  const h1 = bell(c.priceChange.h1, 16, 18);
+  const h6 = normalize(c.priceChange.h6, -8, 36);
+  let value = 0.42 * m5 + 0.38 * h1 + 0.2 * h6;
 
-  // Ueberhitzung bestrafen: wer 60%+ in 5 Minuten macht, ist meist ausgereizt.
-  if (c.priceChange.m5 > 40) value *= 0.6;
-  else if (c.priceChange.m5 > 25) value *= 0.8;
-
-  // Trend soll intakt sein: 1h stark negativ trotz 5m-Pop ist ein Dead-Cat-Bounce.
-  if (c.priceChange.h1 < -12 && c.priceChange.m5 > 0) value *= 0.7;
+  if (c.priceChange.h1 < 0 && c.priceChange.m5 > 0) value *= 0.4;
+  if (c.priceChange.m5 > 28) value *= 0.45;
+  else if (c.priceChange.m5 > 18) value *= 0.75;
+  if (c.priceChange.h24 > 140) value *= 0.7;
+  if (c.priceChange.h1 < -8) value *= 0.55;
 
   return {
     value: clamp(value, 0, 1),
@@ -71,70 +108,78 @@ function momentumScore(c: TokenCandidate): { value: number; detail: string } {
 function buyPressureScore(c: TokenCandidate): { value: number; detail: string } {
   const m5Total = c.txns.m5.buys + c.txns.m5.sells;
   const h1Total = c.txns.h1.buys + c.txns.h1.sells;
-  const m5Ratio = m5Total > 0 ? c.txns.m5.buys / m5Total : 0.5;
-  const h1Ratio = h1Total > 0 ? c.txns.h1.buys / h1Total : 0.5;
-
-  // Wenig 5m-Transaktionen sind statistisch unzuverlaessig -> Richtung 1h ziehen.
-  const m5Weight = clamp(m5Total / 20, 0, 1) * 0.5;
+  const m5Ratio = buyRatio(c.txns.m5.buys, c.txns.m5.sells);
+  const h1Ratio = buyRatio(c.txns.h1.buys, c.txns.h1.sells);
+  const m5Weight = clamp(m5Total / 18, 0, 1) * 0.45;
   const blended = m5Ratio * m5Weight + h1Ratio * (1 - m5Weight);
 
   return {
-    value: normalize(blended, 0.4, 0.72),
+    value: normalize(blended, 0.48, 0.7),
     detail: `1h ${c.txns.h1.buys} Käufe / ${c.txns.h1.sells} Verkäufe (${(h1Ratio * 100).toFixed(0)}% Kaufanteil)`,
   };
 }
 
 function volumeScore(c: TokenCandidate): { value: number; detail: string } {
   const turnover = c.liquidityUsd > 0 ? c.volume.h1 / c.liquidityUsd : 0;
-  const turnoverScore = saturate(turnover, 0.8);
-
-  // Beschleunigung: laeuft die letzte 5-Minuten-Rate ueber dem 1h-Schnitt?
+  const turnoverScore = saturate(turnover, 0.7);
   const projectedHour = c.volume.m5 * 12;
   const acceleration = c.volume.h1 > 0 ? projectedHour / c.volume.h1 : 0;
-  const accelScore = saturate(acceleration, 1.1);
+  const accelScore = saturate(acceleration, 1.05);
+  const persistence = c.volume.h6 > 0 ? saturate(c.volume.h1 / (c.volume.h6 / 6), 1.1) : 0.45;
 
   return {
-    value: clamp(0.6 * turnoverScore + 0.4 * accelScore, 0, 1),
+    value: clamp(0.5 * turnoverScore + 0.3 * accelScore + 0.2 * persistence, 0, 1),
     detail: `1h-Volumen $${Math.round(c.volume.h1).toLocaleString('de-DE')} · Umschlag ${(turnover * 100).toFixed(0)}% · Beschleunigung ${acceleration.toFixed(2)}×`,
   };
 }
 
 function liquidityScore(c: TokenCandidate): { value: number; detail: string } {
-  // Halbwert bei 60k: fuer Positionen im einstelligen Dollarbereich ist ein
-  // 60k-Pool bereits reichlich, mehr Liquiditaet bringt kaum Zusatznutzen.
   return {
-    value: saturate(c.liquidityUsd, 60_000),
+    value: saturate(c.liquidityUsd, 80_000),
     detail: `$${Math.round(c.liquidityUsd).toLocaleString('de-DE')} Pool-Liquidität`,
   };
 }
 
 function ageScore(c: TokenCandidate): { value: number; detail: string } {
-  // Sweet Spot: alt genug um kein Instant-Rug zu sein, jung genug fuer Bewegung.
   const hours = c.ageHours;
   let value: number;
-  if (hours < 1) value = 0.35;
-  else if (hours < 72) value = 0.55 + 0.45 * bell(hours, 18, 30);
-  else value = clamp(0.7 - (hours - 72) / 2000, 0.2, 0.7);
+  if (hours < 3) value = 0.32;
+  else if (hours < 72) value = 0.5 + 0.5 * bell(hours, 18, 22);
+  else value = clamp(0.65 - (hours - 72) / 1800, 0.18, 0.65);
 
-  const label =
-    hours < 24 ? `${hours.toFixed(1)} Std.` : `${(hours / 24).toFixed(1)} Tage`;
+  const label = hours < 24 ? `${hours.toFixed(1)} Std.` : `${(hours / 24).toFixed(1)} Tage`;
   return { value: clamp(value, 0, 1), detail: `Paar-Alter ${label}` };
 }
 
 function sizeScore(c: TokenCandidate): { value: number; detail: string } {
-  // Logarithmische Glocke: Optimum bei ca. 3 Mio. USD Marktkapitalisierung –
-  // gross genug fuer Aufmerksamkeit, klein genug fuer Vervielfachung.
   const mcap = c.marketCap > 0 ? c.marketCap : c.fdv;
-  if (mcap <= 0) return { value: 0.4, detail: 'Marktkapitalisierung unbekannt' };
-  const value = bell(Math.log10(mcap), Math.log10(3_000_000), 1.15);
+  if (mcap <= 0) return { value: 0.35, detail: 'Marktkapitalisierung unbekannt' };
+  const value = bell(Math.log10(mcap), Math.log10(2_400_000), 1.05);
   return {
-    value: clamp(0.25 + 0.75 * value, 0, 1),
+    value: clamp(0.22 + 0.78 * value, 0, 1),
     detail: `Marktkapitalisierung $${Math.round(mcap).toLocaleString('de-DE')}`,
   };
 }
 
+function structureScore(c: TokenCandidate): { value: number; detail: string } {
+  const h1Ratio = buyRatio(c.txns.h1.buys, c.txns.h1.sells);
+  const grind = bell(c.priceChange.m5, 6, 8) * bell(c.priceChange.h1, 14, 16);
+  const notExtended = c.priceChange.h24 < 80 ? 1 : c.priceChange.h24 < 130 ? 0.6 : 0.25;
+  const social = c.hasSocials ? 0.08 : 0;
+  const value = clamp(0.55 * grind + 0.35 * normalize(h1Ratio, 0.5, 0.68) + 0.1 * notExtended + social, 0, 1);
+
+  return {
+    value,
+    detail: c.hasSocials
+      ? 'Gesunde Struktur, Projekt mit Socials/Website'
+      : 'Struktur ohne nachweisbare Socials',
+  };
+}
+
 function hypeScore(c: TokenCandidate): { value: number; detail: string } {
-  const value = saturate(c.boosts, 120);
+  // Boosts sind ein zweischneidiges Schwert: Sichtbarkeit ja, oft Exit-Liquidität.
+  const raw = saturate(c.boosts, 180);
+  const value = c.boosts > 250 ? raw * 0.55 : raw;
   return {
     value,
     detail: c.boosts > 0 ? `${Math.round(c.boosts)} DexScreener-Boosts aktiv` : 'Keine bezahlten Boosts',
@@ -142,14 +187,15 @@ function hypeScore(c: TokenCandidate): { value: number; detail: string } {
 }
 
 const WEIGHTS = {
-  momentum: 0.22,
-  buyPressure: 0.15,
-  volume: 0.16,
-  liquidity: 0.11,
-  security: 0.16,
-  age: 0.09,
-  size: 0.06,
-  hype: 0.05,
+  momentum: 0.18,
+  buyPressure: 0.16,
+  volume: 0.13,
+  liquidity: 0.1,
+  security: 0.18,
+  age: 0.07,
+  size: 0.05,
+  structure: 0.1,
+  hype: 0.03,
 } as const;
 
 /**
@@ -169,9 +215,13 @@ export function scoreCandidate(
     buyPressure: buyPressureScore(candidate),
     volume: volumeScore(candidate),
     liquidity: liquidityScore(candidate),
-    security: { value: security.score, detail: security.flags.length > 0 ? security.flags.join(' · ') : 'Keine Auffälligkeiten' },
+    security: {
+      value: security.score,
+      detail: security.flags.length > 0 ? security.flags.join(' · ') : 'Keine Auffälligkeiten',
+    },
     age: ageScore(candidate),
     size: sizeScore(candidate),
+    structure: structureScore(candidate),
     hype: hypeScore(candidate),
   };
 
@@ -183,6 +233,7 @@ export function scoreCandidate(
     security: 'Contract-Sicherheit',
     age: 'Paar-Alter',
     size: 'Marktkapitalisierung',
+    structure: 'Setup-Qualität',
     hype: 'Sichtbarkeit / Hype',
   };
 
@@ -194,10 +245,7 @@ export function scoreCandidate(
   }));
 
   const rawScore = breakdown.reduce((sum, part) => sum + part.value * part.weight, 0) * 100;
-
-  // Das Marktumfeld daempft oder verstaerkt das Setup, loescht es aber nicht aus:
-  // auch in schwachen Phasen laufen einzelne Memecoins stark.
-  const macroMultiplier = 0.7 + 0.35 * ctx.intel.riskAppetite;
+  const macroMultiplier = 0.72 + 0.32 * ctx.intel.riskAppetite;
   const rejections = hardRejections(candidate, security, ctx);
 
   if (ctx.liveChain && candidate.chain !== ctx.liveChain) {

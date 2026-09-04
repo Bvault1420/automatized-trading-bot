@@ -9,6 +9,9 @@ import { fetchPairSnapshot } from '../scanner/dexscreener.js';
 import { checkSecurity } from '../scanner/security.js';
 import { portfolio } from './portfolio.js';
 import { checkCandidate, checkGlobalRisk, positionSizeUsd, type RiskContext } from './risk.js';
+import { confirmLiveTape } from './entry.js';
+import { decideExit } from './exits.js';
+import { lossCooldownMs, rememberTrade } from './learning.js';
 import { PaperExecutor } from './executor/paper.js';
 import { LiveExecutor } from './executor/live.js';
 import { hotWallet } from '../chain/hot.js';
@@ -20,12 +23,6 @@ const log = createLogger('engine');
 
 const paperExecutor = new PaperExecutor();
 const liveExecutor = new LiveExecutor();
-
-interface ExitDecision {
-  fraction: number;
-  reason: string;
-  urgent: boolean;
-}
 
 class Engine {
   private running = false;
@@ -291,70 +288,12 @@ class Engine {
     if (open.length > 0) bus.emitEvent('positions', portfolio.openPositions(this.mode));
   }
 
-  /**
-   * Exit-Logik. Reihenfolge ist bewusst: Notfaelle zuerst, dann Verlustschutz,
-   * dann Gewinnmitnahme. Ein Memecoin-Trade wird eher zu frueh als zu spaet
-   * beendet – der typische Totalverlust entsteht durch Aussitzen.
-   */
-  private decideExit(position: Position, snapshot: { liquidityUsd: number; priceChangeM5: number } | null): ExitDecision | null {
-    const s = this.settings;
-    const pnlPct = position.pnlPct;
-    const ageMinutes = (Date.now() - position.openedAt) / 60_000;
-    const drawdownFromPeak =
-      position.peakPrice > 0 ? ((position.peakPrice - position.lastPrice) / position.peakPrice) * 100 : 0;
-
-    if (snapshot && snapshot.liquidityUsd > 0 && snapshot.liquidityUsd < s.minLiquidityUsd * 0.4) {
-      return { fraction: 1, reason: 'Liquidität eingebrochen – Notausstieg', urgent: true };
-    }
-
-    if (pnlPct <= -Math.abs(s.stopLossPct)) {
-      return { fraction: 1, reason: `Stop-Loss bei ${pnlPct.toFixed(1)}%`, urgent: true };
-    }
-
-    // Erste Teilgewinnmitnahme: holt den Einsatz weitgehend vom Tisch.
-    if (position.partialsTaken === 0 && pnlPct >= s.takeProfitPct) {
-      return { fraction: 0.5, reason: `Teilgewinn bei +${pnlPct.toFixed(1)}%`, urgent: false };
-    }
-
-    // Zweite Stufe bei doppeltem Ziel.
-    if (position.partialsTaken === 1 && pnlPct >= s.takeProfitPct * 2.2) {
-      return { fraction: 0.5, reason: `Zweiter Teilgewinn bei +${pnlPct.toFixed(1)}%`, urgent: false };
-    }
-
-    // Trailing-Stop, sobald ein nennenswerter Puffer existiert.
-    const trailingArmed = position.partialsTaken > 0 || pnlPct >= s.takeProfitPct * 0.6;
-    if (trailingArmed && drawdownFromPeak >= s.trailingStopPct) {
-      return {
-        fraction: 1,
-        reason: `Trailing-Stop – ${drawdownFromPeak.toFixed(1)}% vom Hoch zurück`,
-        urgent: true,
-      };
-    }
-
-    // Momentum kippt, obwohl die Position im Plus ist: Gewinn sichern.
-    if (pnlPct > 8 && snapshot && snapshot.priceChangeM5 < -9) {
-      return { fraction: 1, reason: 'Momentum gedreht – Gewinn gesichert', urgent: true };
-    }
-
-    // Kapital nicht in Seitwaertsbewegungen binden.
-    if (ageMinutes >= s.maxHoldMinutes && pnlPct < 5) {
-      return { fraction: 1, reason: `Zeitstopp nach ${Math.round(ageMinutes)} Min. (${pnlPct.toFixed(1)}%)`, urgent: false };
-    }
-
-    // Sehr langer Halt ohne Durchbruch.
-    if (ageMinutes >= s.maxHoldMinutes * 4) {
-      return { fraction: 1, reason: `Maximale Haltedauer erreicht (${pnlPct.toFixed(1)}%)`, urgent: false };
-    }
-
-    return null;
-  }
-
   private async manageExits(_ctx: RiskContext): Promise<void> {
     const open = portfolio.openPositions(this.mode);
     for (const position of open) {
       if (this.selling.has(position.id)) continue;
       const snapshot = await fetchPairSnapshot(position.chain, position.pairAddress);
-      const decision = this.decideExit(position, snapshot);
+      const decision = decideExit(position, this.settings, snapshot);
       if (!decision) continue;
       await this.executeSell(position, decision.fraction, decision.reason);
     }
@@ -389,6 +328,10 @@ class Engine {
         log.trade(
           `GESCHLOSSEN ${t.symbol}: ${sign}$${t.pnlUsd.toFixed(3)} (${sign}${t.pnlPct.toFixed(1)}%) nach ${Math.round(t.holdSeconds / 60)} Min. – ${reason}`,
         );
+        const memory = rememberTrade(t);
+        if (memory.blacklisted) {
+          log.warn(`${t.symbol} nach hartem Verlust auf die Sperrliste gesetzt`);
+        }
         this.applyLossCooldown();
       } else {
         log.trade(`Teilverkauf ${position.symbol}: $${result.proceedsUsd.toFixed(3)} – ${reason}`);
@@ -405,9 +348,10 @@ class Engine {
   /** Nach mehreren Verlusten in Folge pausieren – oft ist das Regime gekippt. */
   private applyLossCooldown(): void {
     const losses = portfolio.consecutiveLosses(this.mode);
-    if (losses >= 3) {
-      this.cooldownUntil = Date.now() + 20 * 60_000;
-      log.warn(`${losses} Verluste in Folge – 20 Minuten Pause vor neuen Einstiegen`);
+    const pauseMs = lossCooldownMs(losses);
+    if (pauseMs > 0) {
+      this.cooldownUntil = Date.now() + pauseMs;
+      log.warn(`${losses} Verluste in Folge – ${Math.round(pauseMs / 60_000)} Minuten Pause vor neuen Einstiegen`);
     } else if (losses === 0) {
       this.cooldownUntil = null;
     }
@@ -456,6 +400,13 @@ class Engine {
           if (!draft.blacklist.includes(key)) draft.blacklist.push(key);
         });
       }
+      return false;
+    }
+
+    const tape = await fetchPairSnapshot(c.chain, c.pairAddress);
+    const tapeCheck = confirmLiveTape(c, tape, this.settings);
+    if (!tapeCheck.ok) {
+      log.warn(`Einstieg ${c.symbol} abgebrochen: ${tapeCheck.reason}`);
       return false;
     }
 

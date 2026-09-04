@@ -59,10 +59,20 @@ export async function runScan(options: ScanOptions): Promise<ScoredCandidate[]> 
     source: 'vorläufig',
   });
 
-  const preRanked = candidates
-    .map((candidate) => ({ candidate, pre: scoreCandidate(candidate, neutralSecurity(), ctx) }))
-    .sort((a, b) => b.pre.rawScore - a.pre.rawScore)
-    .slice(0, 28);
+  const cheap = candidates.map((candidate) => ({
+    candidate,
+    pre: scoreCandidate(candidate, neutralSecurity(), ctx),
+  }));
+  const viable = cheap
+    .filter((row) => row.pre.rejections.length === 0)
+    .sort((a, b) => b.pre.rawScore - a.pre.rawScore);
+  const showcase = [...cheap].sort((a, b) => b.pre.rawScore - a.pre.rawScore);
+  const picked = new Map<string, (typeof cheap)[number]>();
+  for (const row of [...viable.slice(0, 20), ...showcase.slice(0, 10)]) {
+    picked.set(row.candidate.id, row);
+    if (picked.size >= 28) break;
+  }
+  const preRanked = [...picked.values()];
 
   const scored = await pooled(preRanked, 5, async ({ candidate }) => {
     const security = await checkSecurity(candidate.chain, candidate.tokenAddress);

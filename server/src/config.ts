@@ -120,22 +120,22 @@ export const config = {
   defaults: {
     tradingMode: str('TRADING_MODE', 'paper') === 'live' ? 'live' : 'paper',
     paperStartBalance: num('PAPER_START_BALANCE', 11),
-    maxOpenPositions: num('MAX_OPEN_POSITIONS', 3),
-    riskPerTradePct: num('RISK_PER_TRADE_PCT', 22),
-    stopLossPct: num('STOP_LOSS_PCT', 18),
-    takeProfitPct: num('TAKE_PROFIT_PCT', 35),
-    trailingStopPct: num('TRAILING_STOP_PCT', 14),
-    maxHoldMinutes: num('MAX_HOLD_MINUTES', 45),
-    dailyLossLimitPct: num('DAILY_LOSS_LIMIT_PCT', 25),
-    maxDrawdownPct: num('MAX_DRAWDOWN_PCT', 40),
-    minLiquidityUsd: num('MIN_LIQUIDITY_USD', 25_000),
-    maxSlippagePct: num('MAX_SLIPPAGE_PCT', 6),
+    maxOpenPositions: num('MAX_OPEN_POSITIONS', 2),
+    riskPerTradePct: num('RISK_PER_TRADE_PCT', 14),
+    stopLossPct: num('STOP_LOSS_PCT', 11),
+    takeProfitPct: num('TAKE_PROFIT_PCT', 20),
+    trailingStopPct: num('TRAILING_STOP_PCT', 8),
+    maxHoldMinutes: num('MAX_HOLD_MINUTES', 25),
+    dailyLossLimitPct: num('DAILY_LOSS_LIMIT_PCT', 18),
+    maxDrawdownPct: num('MAX_DRAWDOWN_PCT', 32),
+    minLiquidityUsd: num('MIN_LIQUIDITY_USD', 40_000),
+    maxSlippagePct: num('MAX_SLIPPAGE_PCT', 5),
     /**
-     * Mindest-Score (0-100) fuer einen Einstieg. Empirisch kalibriert: solide
-     * Setups landen bei 45-55, wirklich starke bei 60+. Hoeher = weniger, aber
-     * selektivere Trades.
+     * Mindest-Score (0-100) fuer einen Einstieg. Die neue Bewertung belohnt
+     * gesunde, nicht parabolische Setups. 64 filtert Mittelmass, das zuvor
+     * bei 55 noch durchgerutscht ist.
      */
-    minEntryScore: num('MIN_ENTRY_SCORE', 55),
+    minEntryScore: num('MIN_ENTRY_SCORE', 64),
     /** Gebuehren-Annahme im Paper-Modus (DEX-Fee pro Seite, in Prozent). */
     paperFeePct: num('PAPER_FEE_PCT', 0.3),
   },

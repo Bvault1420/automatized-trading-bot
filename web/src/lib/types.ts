@@ -65,6 +65,7 @@ export interface TokenCandidate {
   txns: { m5: { buys: number; sells: number }; h1: { buys: number; sells: number } };
   ageHours: number;
   boosts: number;
+  hasSocials: boolean;
   imageUrl?: string;
 }
 

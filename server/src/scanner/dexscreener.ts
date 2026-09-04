@@ -1,7 +1,7 @@
 import { getJson } from '../util/http.js';
 import { createLogger } from '../util/logger.js';
 import { safeNumber } from '../util/num.js';
-import type { TokenCandidate } from '../types.js';
+import type { PairSnapshot, TokenCandidate } from '../types.js';
 
 const log = createLogger('scanner');
 const API = 'https://api.dexscreener.com';
@@ -39,7 +39,7 @@ const CHAIN_QUERIES: Record<string, string[]> = {
   base: ['WETH base', 'USDC base'],
   ethereum: ['WETH ethereum'],
   bsc: ['WBNB bsc'],
-  solana: ['SOL raydium', 'SOL pumpswap'],
+  solana: ['SOL raydium', 'SOL pumpswap', 'SOL meteora', 'SOL orca'],
   arbitrum: ['WETH arbitrum'],
 };
 
@@ -94,6 +94,7 @@ function toCandidate(pair: DexPair, boostAmount = 0): TokenCandidate | null {
     pairCreatedAt: createdAt,
     ageHours,
     boosts: boostAmount || safeNumber(pair.boosts?.active),
+    hasSocials: Boolean(pair.info?.socials?.length || pair.info?.websites?.length),
     imageUrl: pair.info?.imageUrl,
   };
 }
@@ -164,8 +165,11 @@ export async function discoverCandidates(chains: string[], minLiquidityUsd: numb
     const candidate = toCandidate(pair, boosts.get(boostKey) ?? 0);
     if (!candidate) continue;
     if (candidate.liquidityUsd < minLiquidityUsd) continue;
-    if (candidate.ageHours < 0.25) continue; // brandneue Paare: zu wenig Historie
-    if (candidate.volume.h1 <= 0) continue;
+    if (candidate.ageHours < 1) continue;
+    if (candidate.volume.h1 < 4_000) continue;
+    if (candidate.priceChange.h24 < -45) continue;
+    if (candidate.priceChange.m5 < -12) continue;
+    if (candidate.priceChange.h1 < -22) continue;
 
     const tokenKey = `${candidate.chain}:${candidate.tokenAddress.toLowerCase()}`;
     const existing = bestByToken.get(tokenKey);
@@ -181,7 +185,7 @@ export async function discoverCandidates(chains: string[], minLiquidityUsd: numb
 export async function fetchPairSnapshot(
   chain: string,
   pairAddress: string,
-): Promise<{ priceUsd: number; liquidityUsd: number; priceChangeM5: number; priceChangeH1: number } | null> {
+): Promise<PairSnapshot | null> {
   const res = await getJson<{ pairs?: DexPair[] } | DexPair[]>(`${API}/latest/dex/pairs/${chain}/${pairAddress}`, {
     cacheMs: 4_000,
     timeoutMs: 8_000,
@@ -196,5 +200,8 @@ export async function fetchPairSnapshot(
     liquidityUsd: safeNumber(pair.liquidity?.usd),
     priceChangeM5: safeNumber(pair.priceChange?.m5),
     priceChangeH1: safeNumber(pair.priceChange?.h1),
+    volumeM5: safeNumber(pair.volume?.m5),
+    buysM5: safeNumber(pair.txns?.m5?.buys),
+    sellsM5: safeNumber(pair.txns?.m5?.sells),
   };
 }

@@ -285,10 +285,6 @@ export const portfolio = {
         };
         draft.trades.push(trade);
         if (draft.trades.length > 1000) draft.trades.splice(0, draft.trades.length - 1000);
-
-        // Nach einem Exit den Token kurz sperren, um sofortiges Wiedereinsteigen
-        // in dieselbe (oft bereits ausgereizte) Bewegung zu verhindern.
-        draft.cooldowns[`${p.chain}:${p.tokenAddress.toLowerCase()}`] = Date.now() + 30 * 60_000;
       } else {
         p.partialsTaken += 1;
       }

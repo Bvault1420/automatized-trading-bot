@@ -43,10 +43,47 @@ export interface DbShape {
   blacklist: string[];
 }
 
+/** Alte Werks-Strategie (v1). Wird einmalig auf die winrate-orientierten Defaults gehoben. */
+const LEGACY_FACTORY_SETTINGS = {
+  maxOpenPositions: 3,
+  riskPerTradePct: 22,
+  stopLossPct: 18,
+  takeProfitPct: 35,
+  trailingStopPct: 14,
+  maxHoldMinutes: 45,
+  dailyLossLimitPct: 25,
+  maxDrawdownPct: 40,
+  minLiquidityUsd: 25_000,
+  maxSlippagePct: 6,
+  minEntryScore: 55,
+} as const;
+
+const STRATEGY_VERSION = 2;
+
+function migrateSettings(parsed: DbShape, fresh: BotSettings): BotSettings {
+  const settings = { ...fresh, ...parsed.settings };
+  if ((parsed.version ?? 1) >= STRATEGY_VERSION) return settings;
+
+  const next = { ...settings };
+  for (const key of Object.keys(LEGACY_FACTORY_SETTINGS) as (keyof typeof LEGACY_FACTORY_SETTINGS)[]) {
+    if (next[key] === LEGACY_FACTORY_SETTINGS[key]) {
+      next[key] = fresh[key];
+    }
+  }
+  // Wer nur die Positionszahl hochgedreht hat, bekommt trotzdem die neue Selektion.
+  if (
+    parsed.settings?.minEntryScore === LEGACY_FACTORY_SETTINGS.minEntryScore &&
+    next.maxOpenPositions > fresh.maxOpenPositions
+  ) {
+    next.maxOpenPositions = fresh.maxOpenPositions;
+  }
+  return next;
+}
+
 function defaultDb(): DbShape {
   const d = config.defaults;
   return {
-    version: 1,
+    version: STRATEGY_VERSION,
     settings: {
       tradingMode: d.tradingMode,
       maxOpenPositions: d.maxOpenPositions,
@@ -89,18 +126,20 @@ function defaultDb(): DbShape {
 
 const FILE = path.join(DATA_DIR, 'bot.json');
 
-let state: DbShape = load();
 let writeScheduled = false;
+let persistUpgrade = false;
 
 function load(): DbShape {
   try {
     if (fs.existsSync(FILE)) {
       const parsed = JSON.parse(fs.readFileSync(FILE, 'utf8')) as DbShape;
       const base = defaultDb();
+      persistUpgrade = (parsed.version ?? 1) < STRATEGY_VERSION;
       return {
         ...base,
         ...parsed,
-        settings: { ...base.settings, ...parsed.settings },
+        version: Math.max(parsed.version ?? 1, STRATEGY_VERSION),
+        settings: migrateSettings(parsed, base.settings),
         runtime: { ...base.runtime, ...parsed.runtime },
         wallet: { ...base.wallet, ...parsed.wallet },
         paper: { ...base.paper, ...parsed.paper },
@@ -112,6 +151,8 @@ function load(): DbShape {
   }
   return defaultDb();
 }
+
+let state: DbShape = load();
 
 /** Schreibt gebuendelt und atomar, damit haeufige Ticks die Platte nicht saettigen. */
 function schedulePersist(): void {
@@ -130,6 +171,8 @@ function schedulePersist(): void {
     }
   }, 500).unref?.();
 }
+
+if (persistUpgrade) schedulePersist();
 
 export const db = {
   get data(): DbShape {

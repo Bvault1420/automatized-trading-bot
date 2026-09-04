@@ -18,13 +18,13 @@ const FIELDS: Field[] = [
   {
     key: 'minEntryScore',
     label: 'Mindest-Score',
-    hint: 'Höher = weniger, aber selektivere Trades',
+    hint: 'Höher = deutlich selektiver. Unter 60 rutschen schwache Memes durch',
     min: 30, max: 90, step: 1, unit: 'Pkt.',
   },
   {
     key: 'riskPerTradePct',
     label: 'Einsatz pro Trade',
-    hint: 'Anteil des Gesamtkapitals je Position',
+    hint: 'Kleiner halten – wenige, saubere Trades schlagen viele Verlierer',
     min: 5, max: 60, step: 1, unit: '%',
   },
   {
@@ -42,7 +42,7 @@ const FIELDS: Field[] = [
   {
     key: 'takeProfitPct',
     label: 'Erste Gewinnmitnahme',
-    hint: 'Bei diesem Gewinn wird die Hälfte verkauft',
+    hint: 'Bei diesem Gewinn wird der Grossteil verkauft, Rest darf laufen',
     min: 10, max: 200, step: 5, unit: '%',
   },
   {
@@ -54,7 +54,7 @@ const FIELDS: Field[] = [
   {
     key: 'maxHoldMinutes',
     label: 'Max. Haltedauer',
-    hint: 'Danach Ausstieg, falls kein Gewinn läuft',
+    hint: 'Seitwärtsläufer und schwache Plus-Trades werden hier beendet',
     min: 5, max: 480, step: 5, unit: 'Min.',
   },
   {
@@ -145,6 +145,12 @@ export function SettingsPanel({
       }
       bodyClassName="p-5 space-y-4"
     >
+      <p className="rounded-xl border border-emerald-500/15 bg-emerald-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-slate-400">
+        Die Strategie filtert Dumps, Late-Chases und schwache Tapes vor dem Kauf,
+        nimmt Gewinne früher mit und schneidet gescheiterte Einstiege, bevor der
+        Stop-Loss greift. Weniger Trades, höhere Qualität – keine Garantie, aber
+        das ist der Hebel für eine bessere Trefferquote.
+      </p>
       <div className="space-y-3.5">
         {FIELDS.map((field) => {
           const value = Number(draft[field.key]);

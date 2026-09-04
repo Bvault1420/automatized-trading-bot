@@ -82,7 +82,19 @@ export interface TokenCandidate {
   pairCreatedAt: number;
   ageHours: number;
   boosts: number;
+  /** DexScreener listet Website oder Socials – schwacher Qualitäts-Proxy. */
+  hasSocials: boolean;
   imageUrl?: string;
+}
+
+export interface PairSnapshot {
+  priceUsd: number;
+  liquidityUsd: number;
+  priceChangeM5: number;
+  priceChangeH1: number;
+  volumeM5: number;
+  buysM5: number;
+  sellsM5: number;
 }
 
 export interface SecurityReport {

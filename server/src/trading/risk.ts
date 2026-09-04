@@ -1,4 +1,5 @@
 import { clamp } from '../util/num.js';
+import { effectiveMinScore, marketEntryBlocked } from './entry.js';
 import { portfolio } from './portfolio.js';
 import type { BotSettings, MarketIntel, PortfolioState, ScoredCandidate } from '../types.js';
 
@@ -45,9 +46,15 @@ export function checkGlobalRisk(ctx: RiskContext): RiskVerdict {
     return { allowed: false, reason: `Verlustserie – Pause noch ${minutes} Min.` };
   }
 
+  const crash = marketEntryBlocked(ctx.intel);
+  if (crash) {
+    return { allowed: false, reason: crash };
+  }
+
   const openCount = portfolio.openPositions(settings.tradingMode).length;
-  if (openCount >= settings.maxOpenPositions) {
-    return { allowed: false, reason: `Maximale Positionsanzahl erreicht (${openCount}/${settings.maxOpenPositions})` };
+  const maxOpen = ctx.intel.regime === 'risk-off' ? Math.min(1, settings.maxOpenPositions) : settings.maxOpenPositions;
+  if (openCount >= maxOpen) {
+    return { allowed: false, reason: `Maximale Positionsanzahl erreicht (${openCount}/${maxOpen})` };
   }
 
   if (ctx.availableCashUsd < MIN_TRADE_USD) {
@@ -63,10 +70,17 @@ export function checkCandidate(candidate: ScoredCandidate, ctx: RiskContext): Ri
     return { allowed: false, reason: candidate.rejections[0] ?? 'Nicht handelbar' };
   }
 
-  if (candidate.score < ctx.settings.minEntryScore) {
+  const minScore = effectiveMinScore(
+    ctx.settings,
+    ctx.intel,
+    portfolio.trades(ctx.settings.tradingMode),
+    ctx.consecutiveLosses,
+  );
+
+  if (candidate.score < minScore) {
     return {
       allowed: false,
-      reason: `Score ${candidate.score.toFixed(1)} unter Schwelle ${ctx.settings.minEntryScore}`,
+      reason: `Score ${candidate.score.toFixed(1)} unter Schwelle ${minScore.toFixed(0)}`,
     };
   }
 
@@ -80,35 +94,28 @@ export function checkCandidate(candidate: ScoredCandidate, ctx: RiskContext): Ri
     return { allowed: false, reason: 'Position in diesem Token bereits offen' };
   }
 
-  // Im defensiven Regime nur klar ueberdurchschnittliche Setups zulassen.
-  if (ctx.intel.regime === 'risk-off' && candidate.score < ctx.settings.minEntryScore + 8) {
-    return { allowed: false, reason: 'Risk-off-Umfeld verlangt ein stärkeres Signal' };
-  }
-
   return { allowed: true, reason: 'Einstieg freigegeben' };
 }
 
 /**
- * Positionsgroesse nach fixed-fractional Ansatz, moduliert mit Signalstaerke
- * und Marktumfeld. Bei kleinen Konten wird zusaetzlich sichergestellt, dass
- * nicht das gesamte Kapital in einer Position landet.
+ * Positionsgroesse nach fixed-fractional Ansatz, moduliert mit Signalstaerke,
+ * Marktumfeld und aktueller Trefferquote. Nach Verlusten wird kleiner gesetzt.
  */
 export function positionSizeUsd(candidate: ScoredCandidate, ctx: RiskContext): number {
   const { settings, state } = ctx;
   const base = state.equityUsd * (settings.riskPerTradePct / 100);
 
-  // Score 60 -> 0.75x, Score 85+ -> 1.25x
-  const conviction = clamp(0.75 + (candidate.score - 60) / 50, 0.6, 1.25);
-  const regimeFactor = 0.7 + 0.6 * ctx.intel.riskAppetite;
+  const conviction = clamp(0.7 + (candidate.score - 64) / 55, 0.55, 1.15);
+  const regimeFactor = 0.62 + 0.5 * ctx.intel.riskAppetite;
+  const lossFactor =
+    ctx.consecutiveLosses >= 3 ? 0.45 : ctx.consecutiveLosses === 2 ? 0.6 : ctx.consecutiveLosses === 1 ? 0.78 : 1;
 
-  // Nie mehr als ein Bruchteil der Poolliquiditaet: sonst frisst die eigene
-  // Order die Rendite und der Ausstieg wird teuer.
-  const liquidityCap = candidate.candidate.liquidityUsd * 0.002;
+  const liquidityCap = candidate.candidate.liquidityUsd * 0.0015;
 
   const remainingSlots = Math.max(1, settings.maxOpenPositions - portfolio.openPositions(settings.tradingMode).length);
-  const cashCap = ctx.availableCashUsd * (remainingSlots === 1 ? 0.95 : 0.6);
+  const cashCap = ctx.availableCashUsd * (remainingSlots === 1 ? 0.85 : 0.5);
 
-  const size = Math.min(base * conviction * regimeFactor, liquidityCap, cashCap);
+  const size = Math.min(base * conviction * regimeFactor * lossFactor, liquidityCap, cashCap);
   return size >= MIN_TRADE_USD ? Number(size.toFixed(4)) : 0;
 }
 
