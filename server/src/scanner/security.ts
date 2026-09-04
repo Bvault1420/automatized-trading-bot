@@ -181,7 +181,7 @@ function evaluateSolana(data: GoPlusSolana): SecurityReport {
   }
   if (on(data.freezable)) {
     flags.push('Konten einfrierbar');
-    score -= 0.35;
+    score -= 0.5;
   }
   if (on(data.mintable)) {
     flags.push('Nachprägbar (mint authority aktiv)');
@@ -207,7 +207,7 @@ function evaluateSolana(data: GoPlusSolana): SecurityReport {
   score = clamp(score, 0, 1);
   return {
     checked: true,
-    ok: score >= 0.35 && data.non_transferable !== '1',
+    ok: score >= 0.35 && data.non_transferable !== '1' && !on(data.freezable),
     score,
     isHoneypot: data.non_transferable === '1',
     buyTaxPct: 0,

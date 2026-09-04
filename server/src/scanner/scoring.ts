@@ -22,6 +22,9 @@ function hardRejections(c: TokenCandidate, security: SecurityReport, ctx: Scorin
   }
 
   if (security.isHoneypot) reasons.push('Honeypot – Verkauf nicht möglich');
+  if (ctx.liveChain && !security.checked) {
+    reasons.push('Sicherheitsprüfung nicht verfügbar – kein Live-Kauf');
+  }
   if (!security.ok) reasons.push('Sicherheitsprüfung nicht bestanden');
   if (security.sellTaxPct > 12) reasons.push(`Verkaufssteuer zu hoch (${security.sellTaxPct.toFixed(1)}%)`);
 

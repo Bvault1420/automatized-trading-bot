@@ -45,7 +45,6 @@ export async function quoteSwap(inputMint: string, outputMint: string, amount: b
     amount: amount.toString(),
     slippageBps: String(slippageBps(slippagePct)),
     swapMode: 'ExactIn',
-    restrictIntermediateTokens: 'true',
   });
   const res = await fetch(`${JUPITER}/quote?${params}`, {
     headers: { accept: 'application/json' },
@@ -99,11 +98,11 @@ export async function executeSwap(inputMint: string, outputMint: string, amount:
     preflightCommitment: 'confirmed',
   });
 
-  const lastValidBlockHeight = Number(data.lastValidBlockHeight ?? 0);
-  const blockhash = tx.message.recentBlockhash;
-  const confirmation = lastValidBlockHeight
-    ? await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed')
-    : await conn.confirmTransaction(signature, 'confirmed');
+  const latest = await conn.getLatestBlockhash('confirmed');
+  const confirmation = await conn.confirmTransaction(
+    { signature, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight },
+    'confirmed',
+  );
   if (confirmation.value.err) {
     throw new Error(`Jupiter-Transaktion fehlgeschlagen (${signature})`);
   }

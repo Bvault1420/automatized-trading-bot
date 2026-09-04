@@ -122,8 +122,9 @@ function schedulePersist(): void {
     try {
       fs.mkdirSync(DATA_DIR, { recursive: true });
       const tmp = `${FILE}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
+      fs.writeFileSync(tmp, JSON.stringify(state, null, 2), { mode: 0o600 });
       fs.renameSync(tmp, FILE);
+      fs.chmodSync(FILE, 0o600);
     } catch {
       // Persistenzfehler duerfen den Handel nicht stoppen.
     }
@@ -145,6 +146,11 @@ export const db = {
   },
   flush(): void {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(FILE, JSON.stringify(state, null, 2));
+    fs.writeFileSync(FILE, JSON.stringify(state, null, 2), { mode: 0o600 });
+    try {
+      fs.chmodSync(FILE, 0o600);
+    } catch {
+      // chmod kann auf manchen Dateisystemen fehlen.
+    }
   },
 };

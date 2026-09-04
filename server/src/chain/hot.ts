@@ -33,6 +33,18 @@ export const hotWallet = {
   exportSecret(passphrase: string): string {
     return isSolanaChain() ? solanaWallet.exportSecret(passphrase) : botWallet.exportPrivateKey(passphrase);
   },
+  verifyPassphrase(passphrase: string): void {
+    if (isSolanaChain()) solanaWallet.verifyPassphrase(passphrase);
+    else botWallet.verifyPassphrase(passphrase);
+  },
+  changePassphrase(current: string, next: string): void {
+    if (isSolanaChain()) solanaWallet.changePassphrase(current, next);
+    else botWallet.changePassphrase(current, next);
+  },
+  reset(): void {
+    if (isSolanaChain()) solanaWallet.reset();
+    else botWallet.reset();
+  },
   nativeBalance(): Promise<number> {
     return isSolanaChain() ? solanaWallet.nativeBalance() : botWallet.nativeBalance();
   },

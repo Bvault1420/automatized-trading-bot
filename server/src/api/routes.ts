@@ -9,6 +9,7 @@ import { getIntel } from '../intel/index.js';
 import { getCandidates } from '../scanner/index.js';
 import { recentLogs } from '../util/logger.js';
 import { bus } from '../util/bus.js';
+import { clientKey, delay, rateLimited } from '../util/rateLimit.js';
 import { fullState, walletState } from './state.js';
 import { acceptedTokens, sweepToNative } from '../chain/deposits.js';
 import { nativePriceUsd } from '../chain/prices.js';
@@ -29,6 +30,13 @@ const fail = (message: string) => ({ ok: false, message });
 
 function isOwnerAddress(address: string): boolean {
   return isSolanaChain() ? isSolanaAddress(address) : isAddress(address);
+}
+
+function gated(req: { ip?: string; socket?: { remoteAddress?: string } }, action: string, max = 8): string | null {
+  if (rateLimited(`${action}:${clientKey(req)}`, max, 10 * 60_000)) {
+    return 'Zu viele Versuche – bitte ein paar Minuten warten';
+  }
+  return null;
 }
 
 router.get('/state', async (_req, res) => {
@@ -102,6 +110,8 @@ router.post('/wallet/disconnect', async (_req, res) => {
 });
 
 router.post('/wallet/create', async (req, res) => {
+  const limited = gated(req, 'wallet-create', 6);
+  if (limited) return res.status(429).json(fail(limited));
   try {
     const passphrase = String(req.body?.passphrase ?? '');
     const address = hotWallet.create(passphrase);
@@ -114,12 +124,15 @@ router.post('/wallet/create', async (req, res) => {
 });
 
 router.post('/wallet/unlock', async (req, res) => {
+  const limited = gated(req, 'wallet-unlock', 8);
+  if (limited) return res.status(429).json(fail(limited));
   try {
     hotWallet.unlock(String(req.body?.passphrase ?? ''));
     const state = await walletState();
     bus.emitEvent('wallet', state);
     res.json({ ok: true, message: 'Bot-Wallet entsperrt', wallet: state });
   } catch (err) {
+    await delay(400);
     res.status(400).json(fail((err as Error).message));
   }
 });
@@ -133,25 +146,71 @@ router.post('/wallet/lock', async (_req, res) => {
 /** Zahlt das gesamte Guthaben an die verbundene Owner-Adresse aus. */
 router.post('/wallet/withdraw', async (req, res) => {
   try {
+    const limited = gated(req, 'wallet-withdraw', 6);
+    if (limited) return res.status(429).json(fail(limited));
+    hotWallet.verifyPassphrase(String(req.body?.passphrase ?? ''));
     const target = (req.body?.to as string) || db.data.wallet.ownerAddress;
     if (!target || !isOwnerAddress(target)) {
       return res.status(400).json(fail(isSolanaChain() ? 'Keine gültige Solana-Adresse' : 'Keine gültige Zieladresse'));
     }
+    if (hotWallet.address && target === hotWallet.address) {
+      return res.status(400).json(fail('Auszahlung an das Bot-Wallet selbst ist nicht möglich'));
+    }
     if (portfolio.openPositions('live').length > 0) {
       return res.status(400).json(fail('Es sind noch Live-Positionen offen – bitte zuerst schließen'));
     }
+    if (!hotWallet.unlocked) {
+      return res.status(400).json(fail('Bot-Wallet ist gesperrt'));
+    }
     const hash = await hotWallet.withdrawAll(target);
     res.json({ ok: true, message: 'Auszahlung gesendet', txHash: hash });
+  } catch (err) {
+    await delay(300);
+    res.status(400).json(fail((err as Error).message));
+  }
+});
+
+router.post('/wallet/export', (req, res) => {
+  const limited = gated(req, 'wallet-export', 5);
+  if (limited) return res.status(429).json(fail(limited));
+  try {
+    const key = hotWallet.exportSecret(String(req.body?.passphrase ?? ''));
+    res.json({ ok: true, privateKey: key });
   } catch (err) {
     res.status(400).json(fail((err as Error).message));
   }
 });
 
-/** Notfall-Export: der Nutzer behaelt jederzeit die volle Kontrolle. */
-router.post('/wallet/export', (req, res) => {
+router.post('/wallet/passphrase', async (req, res) => {
+  const limited = gated(req, 'wallet-passphrase', 6);
+  if (limited) return res.status(429).json(fail(limited));
   try {
-    const key = hotWallet.exportSecret(String(req.body?.passphrase ?? ''));
-    res.json({ ok: true, privateKey: key });
+    hotWallet.changePassphrase(String(req.body?.current ?? ''), String(req.body?.next ?? ''));
+    const state = await walletState();
+    bus.emitEvent('wallet', state);
+    res.json({ ok: true, message: 'Passphrase geändert', wallet: state });
+  } catch (err) {
+    await delay(400);
+    res.status(400).json(fail((err as Error).message));
+  }
+});
+
+router.post('/wallet/reset', async (req, res) => {
+  const limited = gated(req, 'wallet-reset', 4);
+  if (limited) return res.status(429).json(fail(limited));
+  try {
+    if (String(req.body?.confirm ?? '') !== 'LÖSCHEN') {
+      return res.status(400).json(fail('Zum Löschen musst du LÖSCHEN bestätigen'));
+    }
+    if (portfolio.openPositions('live').length > 0) {
+      return res.status(400).json(fail('Zuerst alle Live-Positionen schließen'));
+    }
+    if (engine.mode === 'live') engine.stop('Wallet gelöscht');
+    hotWallet.lock();
+    hotWallet.reset();
+    const state = await walletState();
+    bus.emitEvent('wallet', state);
+    res.json({ ok: true, message: 'Bot-Wallet gelöscht – du kannst ein neues erstellen', wallet: state });
   } catch (err) {
     res.status(400).json(fail((err as Error).message));
   }
@@ -184,6 +243,7 @@ router.post('/wallet/prepare-deposit', async (req, res) => {
     const amountEur = Number(req.body?.amountEur ?? 0);
     if (!isSolanaAddress(from)) return res.status(400).json(fail('Ungültige Phantom-Adresse'));
     if (!Number.isFinite(amountEur) || amountEur <= 0) return res.status(400).json(fail('Ungültiger Betrag'));
+    if (amountEur > 5_000) return res.status(400).json(fail('Einzahlungsbetrag ist zu hoch'));
     const bot = solanaWallet.address;
     if (!bot) return res.status(400).json(fail('Zuerst ein Bot-Wallet erstellen'));
 

@@ -1,10 +1,12 @@
-import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = path.resolve(here, '..', '..');
 export const DATA_DIR = path.join(ROOT_DIR, 'data');
+
+dotenv.config({ path: path.join(ROOT_DIR, '.env') });
 
 function num(key: string, fallback: number): number {
   const raw = process.env[key];
@@ -86,6 +88,8 @@ const chainKey = str('CHAIN', 'solana') as ChainKey;
 
 export const config = {
   port: num('PORT', 8787),
+  /** Standard: nur dieser Rechner. 0.0.0.0 macht Wallet-Endpunkte im Netz erreichbar. */
+  bindHost: str('BIND_HOST', '127.0.0.1'),
   corsOrigins: str('CORS_ORIGIN', 'http://localhost:5173')
     .split(',')
     .map((s) => s.trim())

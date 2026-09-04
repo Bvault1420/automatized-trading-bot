@@ -9,19 +9,25 @@ import { attachWebSocket } from './api/ws.js';
 import { engine } from './trading/engine.js';
 import { autoUnlock } from './chain/hot.js';
 import { db } from './store/db.js';
+import { originAllowed } from './util/origin.js';
 import { createLogger } from './util/logger.js';
 
 const log = createLogger('server');
 
 const app = express();
+app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Ohne Origin (curl, native Clients) und lokale Dashboards immer erlauben.
-      if (!origin || config.corsOrigins.includes(origin) || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
-        return callback(null, true);
-      }
+      if (originAllowed(origin)) return callback(null, true);
       callback(new Error('Origin nicht erlaubt'));
     },
   }),
@@ -30,7 +36,6 @@ app.use(
 app.get('/api/health', (_req, res) => res.json({ ok: true, uptime: process.uptime() }));
 app.use('/api', router);
 
-// Im Produktivbetrieb liefert derselbe Prozess auch das gebaute Dashboard aus.
 const webDist = path.join(ROOT_DIR, 'web', 'dist');
 if (fs.existsSync(webDist)) {
   app.use(express.static(webDist));
@@ -44,16 +49,17 @@ attachWebSocket(server);
 autoUnlock();
 engine.bootstrap();
 
-server.listen(config.port, () => {
-  log.success(`API bereit auf http://localhost:${config.port}`);
+server.listen(config.port, config.bindHost, () => {
+  log.success(`API bereit auf http://${config.bindHost}:${config.port}`);
   log.info(`Handelsmodus: ${db.data.settings.tradingMode.toUpperCase()} · Live-Chain: ${config.chain.name}`);
-  if (fs.existsSync(webDist)) log.success(`Dashboard: http://localhost:${config.port}`);
+  if (config.bindHost !== '127.0.0.1' && config.bindHost !== 'localhost') {
+    log.warn('API lauscht nicht nur lokal – jeder im Netz kann Wallet-Endpunkte aufrufen');
+  }
+  if (fs.existsSync(webDist)) log.success(`Dashboard: http://${config.bindHost}:${config.port}`);
 });
 
 function shutdown(signal: string): void {
   log.warn(`${signal} empfangen – Bot wird beendet`);
-  // Bewusst ohne engine.stop(): der gespeicherte Laufzustand bleibt erhalten,
-  // damit der Handel nach einem Neustart selbsttaetig weiterlaeuft.
   engine.shutdown();
   db.flush();
   server.close(() => process.exit(0));

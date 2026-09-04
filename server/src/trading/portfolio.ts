@@ -365,7 +365,9 @@ export const portfolio = {
       draft.paper.dayStartedAt = Date.now();
       draft.positions = draft.positions.filter((p) => p.mode !== 'paper');
       draft.trades = draft.trades.filter((t) => t.mode !== 'paper');
-      draft.equityCurve = [];
+      if (!draft.positions.some((p) => p.mode === 'live' && p.status !== 'closed')) {
+        draft.equityCurve = [];
+      }
     });
   },
 };

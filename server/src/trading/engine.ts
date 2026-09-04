@@ -444,13 +444,18 @@ class Engine {
     // Sicherheitslage direkt vor dem Kauf erneut pruefen – Contracts koennen
     // sich zwischen Scan und Ausfuehrung aendern.
     const security = await checkSecurity(c.chain, c.tokenAddress);
+    if (this.mode === 'live' && !security.checked) {
+      log.warn(`Einstieg ${c.symbol} abgebrochen: Sicherheitsprüfung nicht verfügbar`);
+      return false;
+    }
     if (security.isHoneypot || !security.ok) {
       log.warn(`Einstieg ${c.symbol} abgebrochen: Sicherheitsprüfung nicht bestanden (${security.flags.join(', ')})`);
-      db.update((draft) => {
-        if (!draft.blacklist.includes(`${c.chain}:${c.tokenAddress.toLowerCase()}`)) {
-          draft.blacklist.push(`${c.chain}:${c.tokenAddress.toLowerCase()}`);
-        }
-      });
+      if (security.isHoneypot) {
+        db.update((draft) => {
+          const key = `${c.chain}:${c.tokenAddress.toLowerCase()}`;
+          if (!draft.blacklist.includes(key)) draft.blacklist.push(key);
+        });
+      }
       return false;
     }
 

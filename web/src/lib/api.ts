@@ -38,8 +38,12 @@ export const api = {
   createWallet: (passphrase: string) => post<ActionResult & { address: string }>('/wallet/create', { passphrase }),
   unlockWallet: (passphrase: string) => post<ActionResult>('/wallet/unlock', { passphrase }),
   lockWallet: () => post<ActionResult>('/wallet/lock'),
-  withdraw: (to?: string) => post<ActionResult & { txHash: string }>('/wallet/withdraw', to ? { to } : {}),
+  withdraw: (passphrase: string, to?: string) =>
+    post<ActionResult & { txHash: string }>('/wallet/withdraw', to ? { passphrase, to } : { passphrase }),
   exportKey: (passphrase: string) => post<{ ok: boolean; privateKey: string }>('/wallet/export', { passphrase }),
+  changePassphrase: (current: string, next: string) =>
+    post<ActionResult>('/wallet/passphrase', { current, next }),
+  resetWallet: (confirm: string) => post<ActionResult>('/wallet/reset', { confirm }),
   sweep: () => post<ActionResult>('/wallet/sweep'),
   prepareDeposit: (from: string, symbol: string, amountEur: number) =>
     post<ActionResult & { transaction: string }>('/wallet/prepare-deposit', { from, symbol, amountEur }),

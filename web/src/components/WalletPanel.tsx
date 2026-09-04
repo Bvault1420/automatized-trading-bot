@@ -11,6 +11,8 @@ import {
   Loader2,
   Lock,
   LockOpen,
+  ShieldAlert,
+  Trash2,
   Wallet,
 } from 'lucide-react';
 import { Card, Chip } from './ui';
@@ -89,6 +91,13 @@ export function WalletPanel({
   const [copied, setCopied] = useState(false);
   const [depositEur, setDepositEur] = useState('10');
   const [depositSymbol, setDepositSymbol] = useState(wallet.nativeSymbol || (solana ? 'SOL' : 'ETH'));
+  const [withdrawPass, setWithdrawPass] = useState('');
+  const [exportPass, setExportPass] = useState('');
+  const [exportedKey, setExportedKey] = useState<string | null>(null);
+  const [newPass, setNewPass] = useState('');
+  const [newPassRepeat, setNewPassRepeat] = useState('');
+  const [currentPass, setCurrentPass] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
 
   useEffect(() => {
     setDepositSymbol((prev) => {
@@ -547,32 +556,155 @@ export function WalletPanel({
               )}
             </div>
 
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="btn-ghost flex-1"
-                disabled={!wallet.ownerAddress || !wallet.unlocked || busy === 'withdraw'}
-                onClick={() => void run('withdraw', () => api.withdraw())}
-                title={!wallet.ownerAddress ? `Zuerst ${walletName} verbinden` : 'Gesamtes Guthaben auszahlen'}
-              >
-                {busy === 'withdraw' ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ArrowUpFromLine className="h-4 w-4" />
-                )}
-                Auszahlen
-              </button>
-              {wallet.unlocked && (
+            <div className="space-y-2">
+              <input
+                type="password"
+                className="input"
+                placeholder="Passphrase zur Bestätigung der Auszahlung"
+                value={withdrawPass}
+                onChange={(event) => setWithdrawPass(event.target.value)}
+              />
+              <div className="flex gap-2">
                 <button
                   type="button"
-                  className="btn-ghost"
-                  onClick={() => void run('lock', api.lockWallet)}
-                  disabled={busy === 'lock'}
+                  className="btn-ghost flex-1"
+                  disabled={!wallet.ownerAddress || !wallet.unlocked || busy === 'withdraw' || withdrawPass.length < 8}
+                  onClick={() =>
+                    void run('withdraw', () => api.withdraw(withdrawPass)).then(() => setWithdrawPass(''))
+                  }
+                  title={!wallet.ownerAddress ? `Zuerst ${walletName} verbinden` : 'Gesamtes Guthaben auszahlen'}
                 >
-                  <Lock className="h-4 w-4" />
+                  {busy === 'withdraw' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ArrowUpFromLine className="h-4 w-4" />
+                  )}
+                  Auszahlen
                 </button>
-              )}
+                {wallet.unlocked && (
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => void run('lock', api.lockWallet)}
+                    disabled={busy === 'lock'}
+                  >
+                    <Lock className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
+
+            <details className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2">
+              <summary className="cursor-pointer text-[11px] font-semibold text-slate-300">Schlüssel & Notfall</summary>
+              <div className="mt-2 space-y-3">
+                <p className="text-[10px] leading-relaxed text-slate-500">
+                  Exportiert den privaten Schlüssel ({solana ? 'Base58 für Phantom' : 'Hex für MetaMask'}). Wer ihn hat,
+                  hat das Geld. Passphrase vergessen? Dann Wallet löschen und ein neues erstellen – Guthaben auf der
+                  alten Adresse ist dann nur noch mit Backup erreichbar.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    className="input"
+                    placeholder="Passphrase für Export"
+                    value={exportPass}
+                    onChange={(event) => setExportPass(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn-ghost shrink-0"
+                    disabled={exportPass.length < 8 || busy === 'export'}
+                    onClick={() => {
+                      if (!window.confirm('Privaten Schlüssel anzeigen? Niemals teilen oder screenshotten.')) return;
+                      void (async () => {
+                        setBusy('export');
+                        try {
+                          const result = await api.exportKey(exportPass);
+                          setExportedKey(result.privateKey);
+                          setExportPass('');
+                          onNotify('Schlüssel entschlüsselt – sicher notieren', true);
+                        } catch (err) {
+                          onNotify((err as Error).message, false);
+                        } finally {
+                          setBusy(null);
+                        }
+                      })();
+                    }}
+                  >
+                    {busy === 'export' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />}
+                    Export
+                  </button>
+                </div>
+                {exportedKey && (
+                  <code className="num block break-all rounded-lg bg-black/40 px-2 py-1.5 text-[10px] text-amber-200">
+                    {exportedKey}
+                  </code>
+                )}
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Passphrase ändern</div>
+                  <input
+                    type="password"
+                    className="input"
+                    placeholder="Aktuelle Passphrase"
+                    value={currentPass}
+                    onChange={(event) => setCurrentPass(event.target.value)}
+                  />
+                  <input
+                    type="password"
+                    className="input"
+                    placeholder="Neue Passphrase (mind. 8 Zeichen)"
+                    value={newPass}
+                    onChange={(event) => setNewPass(event.target.value)}
+                  />
+                  <input
+                    type="password"
+                    className="input"
+                    placeholder="Neue Passphrase wiederholen"
+                    value={newPassRepeat}
+                    onChange={(event) => setNewPassRepeat(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn-ghost w-full"
+                    disabled={newPass.length < 8 || newPass !== newPassRepeat || currentPass.length < 8 || busy === 'rekey'}
+                    onClick={() =>
+                      void run('rekey', () => api.changePassphrase(currentPass, newPass)).then(() => {
+                        setCurrentPass('');
+                        setNewPass('');
+                        setNewPassRepeat('');
+                      })
+                    }
+                  >
+                    {busy === 'rekey' ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                    Passphrase ändern
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-rose-400">Wallet löschen</div>
+                  <input
+                    className="input"
+                    placeholder='Zum Bestätigen LÖSCHEN eingeben'
+                    value={resetConfirm}
+                    onChange={(event) => setResetConfirm(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn-danger w-full"
+                    disabled={resetConfirm !== 'LÖSCHEN' || busy === 'reset-wallet'}
+                    onClick={() => {
+                      if (!window.confirm('Bot-Wallet unwiderruflich löschen? Ohne Export ist das Guthaben weg.')) return;
+                      void run('reset-wallet', () => api.resetWallet('LÖSCHEN')).then(() => {
+                        setResetConfirm('');
+                        setExportedKey(null);
+                      });
+                    }}
+                  >
+                    {busy === 'reset-wallet' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Wallet löschen
+                  </button>
+                </div>
+              </div>
+            </details>
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { db } from '../store/db.js';
 import { createLogger } from '../util/logger.js';
 import { decryptSecret, encryptSecret } from '../util/secret.js';
+import { assertPassphrase } from '../util/passphrase.js';
 import {
   encodeBase58,
   isSolanaAddress,
@@ -36,15 +37,13 @@ class SolanaWallet {
   }
 
   create(passphrase: string): string {
-    if (!passphrase || passphrase.length < 8) {
-      throw new Error('Passphrase muss mindestens 8 Zeichen lang sein');
-    }
+    const secretPhrase = assertPassphrase(passphrase);
     if (this.hasKeystore) throw new Error('Es existiert bereits ein Solana-Bot-Wallet');
 
     const keypair = Keypair.generate();
     const secret = Buffer.from(keypair.secretKey).toString('base64');
     db.update((draft) => {
-      draft.wallet.solanaKeystore = encryptSecret(secret, passphrase);
+      draft.wallet.solanaKeystore = encryptSecret(secret, secretPhrase);
       draft.wallet.solanaAddress = keypair.publicKey.toBase58();
     });
     this.keypair = keypair;
@@ -64,6 +63,42 @@ class SolanaWallet {
     this.keypair = Keypair.fromSecretKey(Buffer.from(secret, 'base64'));
     log.success(`Solana-Bot-Wallet entsperrt: ${this.keypair.publicKey.toBase58()}`);
     return this.keypair.publicKey.toBase58();
+  }
+
+  verifyPassphrase(passphrase: string): void {
+    const keystore = db.data.wallet.solanaKeystore;
+    if (!keystore) throw new Error('Kein Solana-Bot-Wallet vorhanden');
+    try {
+      decryptSecret(keystore, passphrase);
+    } catch {
+      throw new Error('Falsche Passphrase');
+    }
+  }
+
+  changePassphrase(current: string, next: string): void {
+    const keystore = db.data.wallet.solanaKeystore;
+    if (!keystore) throw new Error('Kein Solana-Bot-Wallet vorhanden');
+    const nextPhrase = assertPassphrase(next, 'Neue Passphrase');
+    let secret: string;
+    try {
+      secret = decryptSecret(keystore, current);
+    } catch {
+      throw new Error('Falsche Passphrase');
+    }
+    db.update((draft) => {
+      draft.wallet.solanaKeystore = encryptSecret(secret, nextPhrase);
+    });
+    this.keypair = Keypair.fromSecretKey(Buffer.from(secret, 'base64'));
+    log.success('Solana-Passphrase geändert');
+  }
+
+  reset(): void {
+    this.keypair = null;
+    db.update((draft) => {
+      draft.wallet.solanaKeystore = null;
+      draft.wallet.solanaAddress = null;
+    });
+    log.warn('Solana-Bot-Wallet gelöscht');
   }
 
   lock(): void {
@@ -98,6 +133,7 @@ class SolanaWallet {
   async withdrawAll(to: string): Promise<string> {
     if (!isSolanaAddress(to)) throw new Error('Keine gültige Solana-Adresse');
     const keypair = this.requireKeypair();
+    if (to === keypair.publicKey.toBase58()) throw new Error('Auszahlung an das Bot-Wallet selbst ist nicht möglich');
     const conn = solanaConnection();
     const dest = new PublicKey(to);
 

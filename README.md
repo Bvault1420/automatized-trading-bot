@@ -152,10 +152,13 @@ Die **Passphrase** ist kein Seed. Du vergibst sie selbst beim Erstellen; sie
 verschlüsselt den privaten Schlüssel auf diesem Rechner. Nach einem Neustart
 muss sie erneut eingegeben werden.
 
-Du behältst jederzeit die volle Kontrolle: „Auszahlen" schickt das gesamte
-Guthaben an deine Phantom-/MetaMask-Adresse zurück, und über
-`POST /api/wallet/export` lässt sich der Schlüssel exportieren (Solana: Base58
-für Phantom, EVM: Hex für MetaMask).
+Du behältst jederzeit die volle Kontrolle: „Auszahlen" verlangt die Passphrase
+und schickt das Guthaben an Phantom/MetaMask. Unter „Schlüssel & Notfall" kannst
+du den Schlüssel exportieren, die Passphrase ändern oder das Bot-Wallet löschen
+(Bestätigung `LÖSCHEN`), falls du die Passphrase vergessen hast.
+
+Die API lauscht standardmäßig nur auf `127.0.0.1`. Nicht auf `0.0.0.0` setzen –
+sonst kann jeder im Netz Auszahlung und Schlüsselexport versuchen.
 
 ### Echtgeld auf Solana (Standard)
 
@@ -219,6 +222,7 @@ Zurücksetzen genügt das Löschen der Datei.
 | --- | --- | --- |
 | `TRADING_MODE` | `paper` | `paper` oder `live` |
 | `PAPER_START_BALANCE` | `11` | Startkapital der Simulation in USD |
+| `BIND_HOST` | `127.0.0.1` | Adresse, auf der die API lauscht. Nicht auf `0.0.0.0` setzen, solange du das Dashboard nicht bewusst im Netz teilst. |
 | `CHAIN` | `solana` | Chain für echte Swaps (`solana`, `base`, `ethereum`, `bsc`, `arbitrum`) |
 | `RPC_URL` | öffentlich | Eigener RPC-Endpunkt |
 | `WALLET_PASSPHRASE` | – | Entsperrt das Bot-Wallet beim Start |

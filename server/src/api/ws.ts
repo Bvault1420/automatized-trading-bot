@@ -1,19 +1,20 @@
-import type { Server } from 'node:http';
+import type { IncomingMessage, Server } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { bus } from '../util/bus.js';
 import { createLogger } from '../util/logger.js';
+import { originAllowed } from '../util/origin.js';
 import { fullState } from './state.js';
 
 const log = createLogger('ws');
 
-/**
- * Push-Kanal fuer das Dashboard. Der Bot erzeugt Ereignisse im Sekundentakt –
- * Polling waere sowohl langsamer als auch deutlich teurer.
- */
 export function attachWebSocket(server: Server): WebSocketServer {
   const wss = new WebSocketServer({ server, path: '/ws' });
 
-  wss.on('connection', async (socket: WebSocket) => {
+  wss.on('connection', async (socket: WebSocket, req: IncomingMessage) => {
+    if (!originAllowed(req.headers.origin)) {
+      socket.close(1008, 'Origin nicht erlaubt');
+      return;
+    }
     log.debug(`Dashboard verbunden (${wss.clients.size} aktiv)`);
     try {
       socket.send(JSON.stringify({ type: 'snapshot', payload: await fullState() }));
