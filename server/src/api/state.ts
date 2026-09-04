@@ -9,6 +9,7 @@ import { getCandidates, getScanStats } from '../scanner/index.js';
 import { engine } from '../trading/engine.js';
 import { portfolio } from '../trading/portfolio.js';
 import { LiveExecutor } from '../trading/executor/live.js';
+import { decoratePosition } from '../trading/fees.js';
 import { recentLogs } from '../util/logger.js';
 import { round } from '../util/num.js';
 import type { WalletState } from '../types.js';
@@ -48,14 +49,15 @@ export async function fullState() {
   const liveSnap = mode === 'live' ? await liveExecutor.snapshotUsd() : null;
   const liveCash = liveSnap?.availableUsd ?? 0;
   const liveExtras = liveSnap
-    ? { walletUsd: liveSnap.walletUsd, reservedUsd: liveSnap.reservedUsd }
+    ? { walletUsd: liveSnap.walletUsd, reservedUsd: liveSnap.reservedUsd, nativePriceUsd: liveSnap.nativePriceUsd }
     : {};
+  const nativePrice = liveSnap?.nativePriceUsd ?? 100;
 
   return {
     status: engine.status(),
     settings: db.data.settings,
     portfolio: portfolio.state(mode, liveCash, liveExtras),
-    positions: portfolio.openPositions(mode),
+    positions: portfolio.openPositions(mode).map((p) => decoratePosition(p, nativePrice)),
     closedPositions: portfolio.positions(mode).filter((p) => p.status === 'closed').slice(-50),
     trades: portfolio.trades(mode).slice(-100).reverse(),
     stats: portfolio.stats(mode),

@@ -136,7 +136,7 @@ export default function App() {
             value={usd(portfolio.equityUsd)}
             sub={
               portfolio.reservedUsd > 0
-                ? `${usd(portfolio.cashUsd)} handelbar · ${usd(portfolio.reservedUsd)} Gas-Reserve`
+                ? `${usd(portfolio.walletUsd ?? portfolio.equityUsd - portfolio.exposureUsd)} Wallet inkl. ${usd(portfolio.reservedUsd)} Gas (kein Verlust) · ${usd(portfolio.exposureUsd)} Token`
                 : `${usd(portfolio.cashUsd)} frei · ${usd(portfolio.exposureUsd)} investiert`
             }
             icon={<Wallet2 className="h-3.5 w-3.5" />}
@@ -145,8 +145,8 @@ export default function App() {
             label="Gesamt-Ergebnis"
             value={pct(portfolio.totalPnlPct)}
             sub={
-              (portfolio.feesUsd ?? 0) > 0
-                ? `Start ${usd(portfolio.startEquityUsd)} · Fees ${usd(portfolio.feesUsd ?? 0)}`
+              (portfolio.feesUsd ?? 0) > 0.02
+                ? `Start ${usd(portfolio.startEquityUsd)} · Gebühren/Gas ~${usd(portfolio.feesUsd ?? 0)}`
                 : `Start ${usd(portfolio.startEquityUsd)}`
             }
             tone={portfolio.totalPnlPct > 0 ? 'good' : portfolio.totalPnlPct < 0 ? 'bad' : 'neutral'}
@@ -180,12 +180,26 @@ export default function App() {
           />
         </div>
 
-        {!isPaper && stats.totalTrades === 0 && (
+        {!isPaper && (stats.totalTrades === 0 || (portfolio.feesUsd ?? 0) > 0.05) && (
           <p className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-2.5 text-[11px] leading-relaxed text-slate-400">
-            Noch kein Live-Trade. Dein SOL liegt weiter im Bot-Wallet – der Kurs in Dollar
-            schwankt, und {usd(portfolio.reservedUsd || 0)} bleiben als Gas-Reserve
-            unangetastet, damit ein Verkauf später durchgeht. Live kauft nur Solana-Token,
-            und gerade ist kein Setup über dem Mindest-Score.
+            {stats.totalTrades === 0 ? (
+              <>
+                Noch kein Live-Trade. Dein SOL liegt weiter im Bot-Wallet – der Kurs in Dollar
+                schwankt, und {usd(portfolio.reservedUsd || 0)} bleiben als Gas-Reserve
+                unangetastet, damit ein Verkauf später durchgeht. Live kauft nur Solana-Token,
+                und gerade ist kein Setup über dem Mindest-Score.
+              </>
+            ) : (
+              <>
+                Offene Positionen können im Plus stehen, während Gesamtkapital minus ist:
+                Kauf/Verkauf auf Solana kostet Gas, Slippage und oft Token-Konto-Miete – das
+                steckt nicht in der Positions-Prozentanzeige. Die Gas-Reserve
+                ({usd(portfolio.reservedUsd || 0)}) liegt weiter im Wallet, das ist kein Verlust.
+                Der Bot nimmt Mini-Gewinne nicht mehr mit, wenn sie nach Fees rot wären, und
+                verkauft auf Mini-Konten in einem Zug. Gas &lt; Gewinn ist nicht garantiert:
+                Memecoins können zwischen zwei Ticks dumpfen.
+              </>
+            )}
           </p>
         )}
 

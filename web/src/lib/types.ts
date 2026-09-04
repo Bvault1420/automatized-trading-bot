@@ -130,6 +130,9 @@ export interface Position {
   unrealizedPnlUsd: number;
   pnlUsd: number;
   pnlPct: number;
+  estimatedExitCostUsd?: number;
+  netPnlUsd?: number;
+  netPnlPct?: number;
   exitReason?: string;
 }
 

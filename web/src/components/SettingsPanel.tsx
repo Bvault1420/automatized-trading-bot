@@ -42,7 +42,7 @@ const FIELDS: Field[] = [
   {
     key: 'takeProfitPct',
     label: 'Erste Gewinnmitnahme',
-    hint: 'Bei diesem Gewinn wird der Grossteil verkauft, Rest darf laufen',
+    hint: 'Auf Mini-Konto kompletter Exit. Gewinn zählt erst nach Gas/Slippage – nicht 65 % dann Rest.',
     min: 10, max: 200, step: 5, unit: '%',
   },
   {
@@ -146,9 +146,10 @@ export function SettingsPanel({
       bodyClassName="p-5 space-y-4"
     >
       <p className="rounded-xl border border-emerald-500/15 bg-emerald-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-slate-400">
-        Mini-Konto (~4 €), eine Position. Score 48 und lockere Hart-Filter,
-        damit er nicht nur scannt, sondern auch kauft. Honeypots und harte
-        Dumps bleiben draußen – keine Gewinn-Garantie.
+        Mini-Konto (~4 €), eine Position, ein Exit. Score 48 und lockere Hart-Filter,
+        damit er nicht nur scannt, sondern auch kauft. Einstiege, deren Gas den
+        Take-Profit auffressen würde, lässt er. Honeypots bleiben draußen – keine
+        Gewinn-Garantie, Gas kann trotzdem einen Trade fressen wenn der Kurs kippt.
       </p>
       <p className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-slate-500">
         24/7: Das Dashboard ist nur die Fernbedienung. Solange der Bot-Prozess

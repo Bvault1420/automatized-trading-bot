@@ -54,7 +54,7 @@ export class PaperExecutor implements Executor {
     }
 
     const feePct = config.defaults.paperFeePct;
-    const gasUsd = amountUsd <= 8 ? 0.008 : 0.02;
+    const gasUsd = amountUsd <= 8 ? 0.08 : 0.02;
     const feeUsd = amountUsd * (feePct / 100) + gasUsd;
     const effectivePrice = price * (1 + impact / 100);
     const tokenAmount = (amountUsd - feeUsd) / effectivePrice;
@@ -85,7 +85,7 @@ export class PaperExecutor implements Executor {
     const effectivePrice = price * (1 - Math.min(impact, 60) / 100);
     const feePct = config.defaults.paperFeePct;
     const proceedsBeforeFees = tokenAmount * effectivePrice;
-    const gasUsd = proceedsBeforeFees <= 8 ? 0.008 : 0.02;
+    const gasUsd = proceedsBeforeFees <= 8 ? 0.08 : 0.02;
     const feeUsd = proceedsBeforeFees * (feePct / 100) + gasUsd;
 
     return {

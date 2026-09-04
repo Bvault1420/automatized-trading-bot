@@ -57,11 +57,18 @@ export function PositionsTable({
               </div>
 
               <div className="text-right">
-                <div className={`num text-lg font-bold ${toneClass(position.pnlPct)}`}>{pct(position.pnlPct)}</div>
-                <div className={`num text-[11px] ${toneClass(position.pnlUsd)}`}>
-                  {position.pnlUsd >= 0 ? '+' : ''}
-                  {usd(position.pnlUsd, 3)}
+                <div className={`num text-lg font-bold ${toneClass(position.netPnlPct ?? position.pnlPct)}`}>
+                  {pct(position.netPnlPct ?? position.pnlPct)}
                 </div>
+                <div className={`num text-[11px] ${toneClass(position.netPnlUsd ?? position.pnlUsd)}`}>
+                  {(position.netPnlUsd ?? position.pnlUsd) >= 0 ? '+' : ''}
+                  {usd(position.netPnlUsd ?? position.pnlUsd, 3)}
+                </div>
+                {position.estimatedExitCostUsd != null && position.estimatedExitCostUsd > 0.01 && (
+                  <div className="text-[10px] text-slate-600">
+                    Kurs {pct(position.pnlPct)} · Verkauf ~{usd(position.estimatedExitCostUsd, 2)}
+                  </div>
+                )}
               </div>
 
               <button
@@ -79,10 +86,15 @@ export function PositionsTable({
               </button>
             </div>
 
-            <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] sm:grid-cols-5">
+            <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] sm:grid-cols-6">
               <Field label="Einstieg" value={price(position.entryPrice)} />
               <Field label="Aktuell" value={price(position.lastPrice)} />
               <Field label="Einsatz" value={usd(position.costUsd, 2)} />
+              <Field
+                label="Gebühren"
+                value={usd(position.feesUsd || 0, 3)}
+                tone={position.feesUsd ? -position.feesUsd : undefined}
+              />
               <Field label="Haltedauer" value={duration(held)} />
               <Field label="Vom Hoch" value={pct(-peakDrawdown)} tone={-peakDrawdown} />
             </div>
