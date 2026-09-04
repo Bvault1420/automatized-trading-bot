@@ -109,7 +109,7 @@ export default function App() {
   const isPaper = status.mode === 'paper';
 
   const tabs: { key: Tab; label: string; icon: typeof Radar; count?: number }[] = [
-    { key: 'signals', label: 'Signale', icon: Radar, count: candidates.filter((c) => c.tradable).length },
+    { key: 'signals', label: 'Signale', icon: Radar, count: candidates.filter((c) => c.tradable && c.score >= settings.minEntryScore).length },
     { key: 'positions', label: 'Positionen', icon: Briefcase, count: positions.length },
     { key: 'trades', label: 'Historie', icon: History, count: trades.length },
     { key: 'logs', label: 'Protokoll', icon: ScrollText },

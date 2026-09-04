@@ -1,7 +1,10 @@
-import { getJson } from '../util/http.js';
+import { XMLParser } from 'fast-xml-parser';
+import { getJson, getText } from '../util/http.js';
 import { analyzeSentiment } from './sentiment.js';
 import { clamp } from '../util/num.js';
 import type { NewsItem } from '../types.js';
+
+const rssParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
 
 const TICKER_RE = /\$([A-Z]{2,12})\b/g;
 const WORD_TICKER_RE = /\b([A-Z]{3,10})\b/g;
@@ -65,7 +68,47 @@ function collectTickers(text: string, into: Map<string, { mentions: number; newe
   }
 }
 
+function redditItem(title: string, url: string, publishedAt: number, sub: string): NewsItem[] {
+  if (!title) return [];
+  const { score, matchedTerms } = analyzeSentiment(title);
+  return [
+    {
+      title,
+      url,
+      source: `Reddit r/${sub}`,
+      publishedAt: Number.isFinite(publishedAt) ? publishedAt : Date.now(),
+      sentiment: score,
+      matchedTerms,
+    },
+  ];
+}
+
+async function fetchSubredditRss(sub: string): Promise<NewsItem[]> {
+  const xml = await getText(`https://www.reddit.com/r/${sub}/new/.rss`, { cacheMs: 40_000, timeoutMs: 8_000 });
+  if (!xml) return [];
+  try {
+    const parsed = rssParser.parse(xml) as Record<string, any>;
+    const raw = parsed?.feed?.entry ?? parsed?.rss?.channel?.item ?? [];
+    const items = Array.isArray(raw) ? raw : [raw];
+    return items.slice(0, 25).flatMap((item) => {
+      const title = typeof item.title === 'string' ? item.title : String(item.title?.['#text'] ?? '');
+      const link =
+        typeof item.link === 'string'
+          ? item.link
+          : String(item.link?.['@_href'] ?? item.link?.['#text'] ?? '');
+      const dateRaw = item.updated ?? item.published ?? item.pubDate;
+      const publishedAt = dateRaw ? new Date(String(dateRaw)).getTime() : Date.now();
+      return redditItem(title.trim(), link, publishedAt, sub);
+    });
+  } catch {
+    return [];
+  }
+}
+
 async function fetchSubreddit(sub: string): Promise<NewsItem[]> {
+  const fromRss = await fetchSubredditRss(sub);
+  if (fromRss.length > 0) return fromRss;
+
   const res = await getJson<RedditListing>(`https://www.reddit.com/r/${sub}/new.json?limit=40&raw_json=1`, {
     cacheMs: 40_000,
     timeoutMs: 8_000,
@@ -75,17 +118,12 @@ async function fetchSubreddit(sub: string): Promise<NewsItem[]> {
     const post = row.data;
     if (!post?.title) return [];
     const publishedAt = (post.created_utc ?? 0) * 1000 || Date.now();
-    const { score, matchedTerms } = analyzeSentiment(post.title);
-    return [
-      {
-        title: post.title,
-        url: post.permalink ? `https://www.reddit.com${post.permalink}` : (post.url ?? ''),
-        source: `Reddit r/${post.subreddit ?? sub}`,
-        publishedAt,
-        sentiment: score,
-        matchedTerms,
-      },
-    ];
+    return redditItem(
+      post.title,
+      post.permalink ? `https://www.reddit.com${post.permalink}` : (post.url ?? ''),
+      publishedAt,
+      post.subreddit ?? sub,
+    );
   });
 }
 

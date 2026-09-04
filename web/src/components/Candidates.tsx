@@ -113,14 +113,16 @@ export function CandidatesTable({
     return <Empty>Der Scanner sammelt noch Daten …</Empty>;
   }
 
-  const tradable = candidates.filter((c) => c.tradable).length;
+  const clean = candidates.filter((c) => c.tradable).length;
+  const ready = candidates.filter((c) => c.tradable && c.score >= minEntryScore).length;
 
   return (
     <div className="divide-y divide-white/[0.04]">
       <div className="px-5 py-2 text-[10px] text-slate-500">
-        <span className="num font-semibold text-slate-300">{tradable}</span> handelbar ·{' '}
+        <span className="num font-semibold text-emerald-400">{ready}</span> kaufbereit ·{' '}
+        <span className="num text-slate-300">{clean}</span> ohne Hart-Filter ·{' '}
         <span className="num">{candidates.length}</span> bewertet
-        {tradable === 0 && ' · gerade kein sauberes Setup, Bot wartet'}
+        {ready === 0 && ' · wartet auf ein Setup über dem Mindest-Score'}
       </div>
       {candidates.map((item) => {
         const c = item.candidate;
