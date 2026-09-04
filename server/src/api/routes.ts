@@ -9,6 +9,7 @@ import { getCandidates } from '../scanner/index.js';
 import { recentLogs } from '../util/logger.js';
 import { bus } from '../util/bus.js';
 import { fullState, walletState } from './state.js';
+import { sweepToNative } from '../chain/deposits.js';
 import type { TradingMode } from '../types.js';
 
 export const router = Router();
@@ -132,6 +133,21 @@ router.post('/wallet/export', (req, res) => {
   try {
     const key = botWallet.exportPrivateKey(String(req.body?.passphrase ?? ''));
     res.json({ ok: true, privateKey: key });
+  } catch (err) {
+    res.status(400).json(fail((err as Error).message));
+  }
+});
+
+router.post('/wallet/sweep', async (_req, res) => {
+  try {
+    const result = await sweepToNative();
+    const state = await walletState();
+    bus.emitEvent('wallet', state);
+    const message =
+      result.converted > 0
+        ? `${result.converted} Token-Guthaben in ${state.nativeSymbol} umgewandelt`
+        : result.messages[0] ?? 'Nichts umzuwandeln';
+    res.json({ ok: true, message, wallet: state, details: result.messages });
   } catch (err) {
     res.status(400).json(fail((err as Error).message));
   }

@@ -15,7 +15,7 @@ import {
 import { Card, Chip } from './ui';
 import { api } from '../lib/api';
 import { shortAddress, usd } from '../lib/format';
-import type { WalletState } from '../lib/types';
+import type { DepositAsset, WalletState } from '../lib/types';
 
 declare global {
   interface Window {
@@ -24,6 +24,22 @@ declare global {
       isMetaMask?: boolean;
     };
   }
+}
+
+function erc20TransferData(to: string, amount: bigint): string {
+  const selector = 'a9059cbb';
+  const addr = to.replace(/^0x/i, '').toLowerCase().padStart(64, '0');
+  const amt = amount.toString(16).padStart(64, '0');
+  return `0x${selector}${addr}${amt}`;
+}
+
+function tokenAmountFromEur(asset: DepositAsset, eur: number): bigint {
+  const price = asset.kind === 'stable' ? 1 : asset.priceUsd;
+  if (price <= 0) throw new Error(`Preis für ${asset.symbol} nicht verfügbar`);
+  const tokens = eur / price;
+  const raw = BigInt(Math.round(tokens * 10 ** asset.decimals));
+  if (raw <= 0n) throw new Error('Betrag zu klein');
+  return raw;
 }
 
 const BASE_CHAIN = {
@@ -47,6 +63,7 @@ export function WalletPanel({
   const [passphrase, setPassphrase] = useState('');
   const [copied, setCopied] = useState(false);
   const [depositEur, setDepositEur] = useState('10');
+  const [depositSymbol, setDepositSymbol] = useState('ETH');
 
   const run = async (key: string, action: () => Promise<{ message: string }>) => {
     setBusy(key);
@@ -120,8 +137,13 @@ export function WalletPanel({
       onNotify('Ungültiger Betrag', false);
       return;
     }
-    if (wallet.nativePriceUsd <= 0) {
-      onNotify('ETH-Preis gerade nicht verfügbar – bitte in ein paar Sekunden erneut versuchen', false);
+    const assets = wallet.assets ?? [];
+    const asset =
+      depositSymbol === 'ETH' || depositSymbol === wallet.nativeSymbol
+        ? assets.find((a) => a.kind === 'native')
+        : assets.find((a) => a.symbol === depositSymbol);
+    if (!asset) {
+      onNotify('Dieses Token ist gerade nicht verfügbar', false);
       return;
     }
     setBusy('deposit');
@@ -130,14 +152,30 @@ export function WalletPanel({
       const accounts = (await window.ethereum.request({ method: 'eth_requestAccounts' })) as string[];
       const from = accounts[0];
       if (!from) throw new Error('Keine MetaMask-Adresse');
-      const ethAmount = eur / wallet.nativePriceUsd;
-      const wei = BigInt(Math.round(ethAmount * 1e18));
-      if (wei <= 0n) throw new Error('Betrag zu klein');
-      const hash = (await window.ethereum.request({
-        method: 'eth_sendTransaction',
-        params: [{ from, to: wallet.botAddress, value: `0x${wei.toString(16)}` }],
-      })) as string;
-      onNotify(`Einzahlung gesendet (${ethAmount.toFixed(5)} ETH) – ${hash.slice(0, 10)}…`, true);
+
+      if (asset.kind === 'native') {
+        const wei = tokenAmountFromEur({ ...asset, priceUsd: wallet.nativePriceUsd || asset.priceUsd }, eur);
+        const hash = (await window.ethereum.request({
+          method: 'eth_sendTransaction',
+          params: [{ from, to: wallet.botAddress, value: `0x${wei.toString(16)}` }],
+        })) as string;
+        onNotify(`Einzahlung gesendet (${Number(wei) / 1e18} ETH) – ${hash.slice(0, 10)}…`, true);
+      } else {
+        if (!asset.address) throw new Error('Token-Adresse fehlt');
+        const raw = tokenAmountFromEur(asset, eur);
+        const hash = (await window.ethereum.request({
+          method: 'eth_sendTransaction',
+          params: [
+            {
+              from,
+              to: asset.address,
+              value: '0x0',
+              data: erc20TransferData(wallet.botAddress, raw),
+            },
+          ],
+        })) as string;
+        onNotify(`${asset.symbol}-Einzahlung gesendet – ${hash.slice(0, 10)}…`, true);
+      }
       await onRefresh();
     } catch (err) {
       onNotify((err as Error).message, false);
@@ -146,18 +184,35 @@ export function WalletPanel({
     }
   };
 
-  const funded = wallet.nativeBalance > 0.00025;
+  const assets = wallet.assets ?? [];
+  const deposited = (wallet.totalUsd ?? 0) >= 1 || wallet.nativeBalance > 0.00025;
   const steps = [
     { done: wallet.hasKeystore, label: 'Bot-Wallet erstellt' },
     { done: wallet.unlocked, label: 'Wallet entsperrt' },
-    { done: funded, label: `ETH auf ${wallet.chain} eingezahlt` },
+    { done: deposited, label: `Guthaben auf ${wallet.chain} eingezahlt` },
   ];
   const remaining = steps.filter((s) => !s.done).length;
 
-  const ethForEur =
-    wallet.nativePriceUsd > 0 && Number(depositEur.replace(',', '.')) > 0
-      ? Number(depositEur.replace(',', '.')) / wallet.nativePriceUsd
+  const selectedAsset =
+    assets.find((a) => a.symbol === depositSymbol) ?? assets.find((a) => a.kind === 'native');
+  const eurNum = Number(depositEur.replace(',', '.'));
+  const previewAmount =
+    selectedAsset && eurNum > 0
+      ? eurNum / (selectedAsset.kind === 'stable' ? 1 : selectedAsset.priceUsd || wallet.nativePriceUsd)
       : 0;
+  const sendChoices = assets.filter((a) => a.kind === 'native' || a.kind === 'stable' || a.kind === 'btc');
+  if (sendChoices.length === 0) {
+    sendChoices.push({
+      symbol: wallet.nativeSymbol,
+      name: wallet.nativeSymbol,
+      address: null,
+      decimals: 18,
+      kind: 'native',
+      balance: wallet.nativeBalance,
+      balanceUsd: wallet.nativeBalanceUsd,
+      priceUsd: wallet.nativePriceUsd,
+    });
+  }
 
   return (
     <Card
@@ -186,10 +241,22 @@ export function WalletPanel({
       </div>
 
       <p className="text-[11px] leading-relaxed text-slate-500">
-        MetaMask kann nicht vollautomatisch handeln – jede Transaktion müsste manuell bestätigt werden.
-        Deshalb bekommt der Bot ein eigenes Wallet. Du zahlst dort ETH auf <strong className="text-slate-300">{wallet.chain}</strong> ein
-        (z. B. 10 €), und der Bot tradet damit selbstständig. Auszahlen geht jederzeit zurück an dein MetaMask.
+        MetaMask kann nicht vollautomatisch handeln, deshalb bekommt der Bot ein eigenes Wallet. Du kannst dort auf{' '}
+        <strong className="text-slate-300">{wallet.chain}</strong> ETH, USDC, USDT, DAI oder cbBTC (Bitcoin auf Base)
+        einzahlen – der Bot wandelt andere Coins selbst in ETH um und tradet damit. Native Bitcoin oder Solana kommen
+        an dieser Adresse <strong className="text-slate-300">nicht</strong> an.
       </p>
+
+      <details className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2">
+        <summary className="cursor-pointer text-[11px] font-semibold text-slate-300">Was ist die Passphrase?</summary>
+        <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+          Die Passphrase ist <strong className="text-slate-300">kein</strong> Seed und kein Börsenpasswort. Du vergibst
+          sie selbst, wenn du das Bot-Wallet erstellst. Damit wird der private Schlüssel auf diesem Rechner verschlüsselt.
+          Nach jedem Server-Neustart musst du sie eingeben, sonst kann der Bot keine Transaktion signieren. Wer sie kennt,
+          kann das Wallet entsperren – also notieren und niemandem schicken. Verloren = Bot kann den Schlüssel nicht
+          mehr entschlüsseln (Export vorher ist die Rettung).
+        </p>
+      </details>
 
       <div>
         <div className="flex items-center justify-between">
@@ -246,7 +313,7 @@ export function WalletPanel({
             <input
               type="password"
               className="input"
-              placeholder="Passphrase (mind. 8 Zeichen)"
+              placeholder="Passphrase (mind. 8 Zeichen, selbst vergeben)"
               value={passphrase}
               onChange={(event) => setPassphrase(event.target.value)}
             />
@@ -303,17 +370,47 @@ export function WalletPanel({
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2.5 space-y-2">
               <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
                 <ArrowDownToLine className="h-3.5 w-3.5" />
-                ETH auf {wallet.chain} einzahlen
+                Einzahlen auf {wallet.chain}
               </div>
               <p className="text-[10px] leading-relaxed text-slate-400">
-                Wichtig: Netzwerk <span className="font-semibold text-slate-200">{wallet.chain}</span>, nicht Ethereum
-                Mainnet. Sonst kommt das Geld nicht an.
+                Gleiche Adresse für ETH, USDC, USDT, DAI und cbBTC. Netzwerk muss{' '}
+                <span className="font-semibold text-slate-200">{wallet.chain}</span> sein – nicht Bitcoin-Mainnet, nicht
+                Ethereum-Mainnet, nicht Solana.
               </p>
               <code className="num block break-all rounded-lg bg-black/40 px-2 py-1.5 text-[10px] text-emerald-200">
                 {wallet.botAddress}
               </code>
 
+              {assets.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {assets.map((asset) => (
+                    <span
+                      key={asset.symbol}
+                      className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
+                        asset.balanceUsd > 0.01
+                          ? 'bg-emerald-500/15 text-emerald-200'
+                          : 'bg-black/30 text-slate-500'
+                      }`}
+                    >
+                      {asset.symbol}
+                      {asset.balanceUsd > 0.01 ? ` ${usd(asset.balanceUsd)}` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               <div className="flex gap-2">
+                <select
+                  className="input w-28 shrink-0"
+                  value={depositSymbol}
+                  onChange={(event) => setDepositSymbol(event.target.value)}
+                >
+                  {sendChoices.map((asset) => (
+                    <option key={asset.symbol} value={asset.symbol}>
+                      {asset.symbol}
+                    </option>
+                  ))}
+                </select>
                 <div className="relative flex-1">
                   <input
                     type="number"
@@ -327,20 +424,32 @@ export function WalletPanel({
                     €
                   </span>
                 </div>
+              </div>
+              <button
+                type="button"
+                className="btn-primary w-full"
+                disabled={busy === 'deposit' || !wallet.botAddress}
+                onClick={() => void depositFromMetaMask()}
+              >
+                {busy === 'deposit' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+                {depositSymbol} aus MetaMask senden
+              </button>
+              {previewAmount > 0 && selectedAsset && (
+                <p className="text-[10px] text-slate-500">
+                  ≈ {previewAmount < 0.01 ? previewAmount.toFixed(6) : previewAmount.toFixed(4)} {selectedAsset.symbol}
+                  {selectedAsset.kind === 'btc' ? ' (Bitcoin als cbBTC auf Base, nicht natives BTC)' : ''}
+                </p>
+              )}
+              {(wallet.tokenUsd ?? 0) >= 0.5 && wallet.unlocked && (
                 <button
                   type="button"
-                  className="btn-primary shrink-0"
-                  disabled={busy === 'deposit' || !wallet.botAddress}
-                  onClick={() => void depositFromMetaMask()}
+                  className="btn-ghost w-full"
+                  disabled={busy === 'sweep'}
+                  onClick={() => void run('sweep', api.sweep)}
                 >
-                  {busy === 'deposit' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-                  Aus MetaMask
+                  {busy === 'sweep' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Tokens jetzt in {wallet.nativeSymbol} umwandeln
                 </button>
-              </div>
-              {ethForEur > 0 && (
-                <p className="text-[10px] text-slate-500">
-                  ≈ {ethForEur.toFixed(5)} {wallet.nativeSymbol} bei {usd(wallet.nativePriceUsd, 0)}/{wallet.nativeSymbol}
-                </p>
               )}
             </div>
 

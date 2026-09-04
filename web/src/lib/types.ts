@@ -187,6 +187,17 @@ export interface BotStatus {
   cooldownUntil: number | null;
 }
 
+export interface DepositAsset {
+  symbol: string;
+  name: string;
+  address: string | null;
+  decimals: number;
+  kind: 'native' | 'stable' | 'btc' | 'wrapped';
+  balance: number;
+  balanceUsd: number;
+  priceUsd: number;
+}
+
 export interface WalletState {
   ownerAddress: string | null;
   botAddress: string | null;
@@ -201,6 +212,9 @@ export interface WalletState {
   unlocked: boolean;
   liveReady: boolean;
   liveBlockers: string[];
+  assets: DepositAsset[];
+  tokenUsd: number;
+  totalUsd: number;
 }
 
 export interface Stats {

@@ -146,7 +146,14 @@ zwei Wallets:
    Der Bot bekommt dadurch keinerlei Zugriff darauf.
 2. **Das Handelswallet des Bots** – wird lokal erzeugt, der private Schlüssel
    liegt mit scrypt + AES-256-GCM verschlüsselt in `data/bot.json`. Du zahlst
-   dort z. B. 10 € in ETH auf Base ein, und der Bot handelt eigenständig damit.
+   dort z. B. 10 € als ETH, USDC, USDT, DAI oder cbBTC (Bitcoin auf Base) ein.
+   Andere akzeptierte Tokens wandelt der Bot selbst in ETH um und handelt
+   damit. Native Bitcoin oder Solana können an diese EVM-Adresse nicht
+   ankommen.
+
+Die **Passphrase** ist kein Seed. Du vergibst sie selbst beim Erstellen; sie
+verschlüsselt den privaten Schlüssel auf diesem Rechner. Nach einem Neustart
+muss sie erneut eingegeben werden.
 
 Du behältst jederzeit die volle Kontrolle: „Auszahlen" schickt das gesamte
 Guthaben an deine MetaMask-Adresse zurück, und über `POST /api/wallet/export`
@@ -161,8 +168,9 @@ Im Dashboard, rechte Seite „Echtgeld einrichten":
 
 1. Bot-Wallet erstellen (Passphrase merken)
 2. Wallet entsperren (nach jedem Server-Neustart erneut)
-3. ETH auf **Base** einzahlen – entweder Adresse kopieren oder direkt
-   „Aus MetaMask" (Netzwerk muss Base sein, nicht Ethereum Mainnet)
+3. Auf **Base** einzahlen: ETH, USDC, USDT, DAI oder cbBTC – gleiche Adresse,
+   entweder kopieren oder direkt aus MetaMask. Ein paar Cent ETH als Gas
+   werden gebraucht, wenn du nur Tokens schickst.
 4. Oben auf **Echtgeld** umschalten und den Bot starten
 
 Optional in `.env`: `WALLET_PASSPHRASE` (entsperrt beim Start automatisch)

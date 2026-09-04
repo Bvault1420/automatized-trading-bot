@@ -5,6 +5,7 @@ import { nativePriceUsd } from '../../chain/prices.js';
 import { createLogger } from '../../util/logger.js';
 import { clamp } from '../../util/num.js';
 import { routeSwap } from './router.js';
+import { readDeposits, sweepToNative } from '../../chain/deposits.js';
 import type { Position, TokenCandidate } from '../../types.js';
 import type { BuyResult, Executor, SellResult } from './types.js';
 
@@ -31,31 +32,33 @@ export class LiveExecutor implements Executor {
       reasons.push('Bot-Wallet ist gesperrt – Passphrase eingeben, damit der Bot Transaktionen signieren kann');
     }
 
-    if (botWallet.address && botWallet.unlocked) {
-      const balance = await botWallet.nativeBalance();
-      if (balance <= GAS_RESERVE_ETH) {
-        reasons.push(
-          `Noch kein Guthaben: sende ETH auf ${config.chain.name} an das Bot-Wallet (aktuell ${balance.toFixed(6)} ${config.chain.nativeSymbol})`,
-        );
-      }
-    } else if (botWallet.address && !botWallet.unlocked) {
-      // Guthaben trotzdem pruefen, damit die Checkliste den Einzahlungsstatus zeigt.
-      const balance = await botWallet.nativeBalance();
-      if (balance <= GAS_RESERVE_ETH) {
-        reasons.push(
-          `Noch kein Guthaben: sende ETH auf ${config.chain.name} an das Bot-Wallet (aktuell ${balance.toFixed(6)} ${config.chain.nativeSymbol})`,
-        );
-      }
+    const snap = botWallet.address
+      ? await readDeposits()
+      : { nativeBalance: 0, tokenUsd: 0, totalUsd: 0, nativeBalanceUsd: 0 };
+
+    if (snap.nativeBalance <= GAS_RESERVE_ETH && snap.tokenUsd < 1) {
+      reasons.push(
+        `Noch kein Guthaben: sende ETH, USDC oder cbBTC (Bitcoin auf Base) auf ${config.chain.name} an das Bot-Wallet`,
+      );
+    } else if (snap.nativeBalance <= GAS_RESERVE_ETH && snap.tokenUsd >= 1) {
+      reasons.push(
+        `${snap.tokenUsd.toFixed(2)} $ in Tokens erkannt, aber es fehlt etwas ${config.chain.nativeSymbol} als Gas für die Umwandlung (ein paar Cent reichen)`,
+      );
     }
     return reasons;
   }
 
   async availableCashUsd(): Promise<number> {
-    const [balance, price] = await Promise.all([
-      botWallet.nativeBalance(),
-      nativePriceUsd(config.chain.nativeSymbol),
-    ]);
-    return Math.max(0, balance - GAS_RESERVE_ETH) * price;
+    if (botWallet.unlocked) {
+      try {
+        await sweepToNative();
+      } catch {
+        // Umwandlung fehlgeschlagen: dann mit dem zählen, was schon ETH ist.
+      }
+    }
+    const snap = await readDeposits();
+    const ethUsd = Math.max(0, snap.nativeBalance - GAS_RESERVE_ETH) * snap.nativePriceUsd;
+    return ethUsd + snap.tokenUsd;
   }
 
   private async decimals(token: Address): Promise<number> {

@@ -1,7 +1,7 @@
 import { config } from '../config.js';
 import { db } from '../store/db.js';
 import { botWallet } from '../chain/wallet.js';
-import { nativePriceUsd } from '../chain/prices.js';
+import { readDeposits } from '../chain/deposits.js';
 import { getIntel } from '../intel/index.js';
 import { getCandidates } from '../scanner/index.js';
 import { engine } from '../trading/engine.js';
@@ -14,11 +14,7 @@ import type { WalletState } from '../types.js';
 const liveExecutor = new LiveExecutor();
 
 export async function walletState(): Promise<WalletState> {
-  const [balance, price, blockers] = await Promise.all([
-    botWallet.address ? botWallet.nativeBalance() : Promise.resolve(0),
-    nativePriceUsd(config.chain.nativeSymbol),
-    liveExecutor.blockers(),
-  ]);
+  const [snap, blockers] = await Promise.all([readDeposits(), liveExecutor.blockers()]);
 
   return {
     ownerAddress: db.data.wallet.ownerAddress,
@@ -27,13 +23,16 @@ export async function walletState(): Promise<WalletState> {
     chainId: config.chain.id,
     explorer: config.chain.explorer,
     nativeSymbol: config.chain.nativeSymbol,
-    nativeBalance: round(balance, 8),
-    nativeBalanceUsd: round(balance * price, 2),
-    nativePriceUsd: round(price, 2),
+    nativeBalance: round(snap.nativeBalance, 8),
+    nativeBalanceUsd: round(snap.nativeBalanceUsd, 2),
+    nativePriceUsd: round(snap.nativePriceUsd, 2),
     hasKeystore: botWallet.hasKeystore,
     unlocked: botWallet.unlocked,
     liveReady: blockers.length === 0,
     liveBlockers: blockers,
+    assets: snap.assets,
+    tokenUsd: round(snap.tokenUsd, 2),
+    totalUsd: round(snap.totalUsd, 2),
   };
 }
 

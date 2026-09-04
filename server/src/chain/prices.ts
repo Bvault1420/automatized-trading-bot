@@ -3,6 +3,7 @@ import { safeNumber } from '../util/num.js';
 
 const COINGECKO_IDS: Record<string, string> = {
   ETH: 'ethereum',
+  BTC: 'bitcoin',
   BNB: 'binancecoin',
   SOL: 'solana',
   MATIC: 'matic-network',

@@ -12,6 +12,7 @@ import { checkCandidate, checkGlobalRisk, positionSizeUsd, type RiskContext } fr
 import { PaperExecutor } from './executor/paper.js';
 import { LiveExecutor } from './executor/live.js';
 import { botWallet } from '../chain/wallet.js';
+import { sweepToNative } from '../chain/deposits.js';
 import type { Executor } from './executor/types.js';
 import type { BotSettings, BotStatus, Position, ScoredCandidate, TradingMode } from '../types.js';
 
@@ -236,6 +237,14 @@ class Engine {
 
   private async tick(): Promise<void> {
     this.lastTickAt = Date.now();
+
+    if (botWallet.unlocked) {
+      try {
+        await sweepToNative();
+      } catch {
+        // Einzahlungen bleiben liegen und werden im naechsten Tick erneut versucht.
+      }
+    }
 
     await this.updatePositions();
 
