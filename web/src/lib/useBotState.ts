@@ -59,10 +59,14 @@ export function useBotState() {
             return { ...prev, wallet: message.payload as FullState['wallet'] };
           case 'trade': {
             const trade = message.payload as FullState['trades'][number];
+            if (prev.trades.some((existing) => existing.id === trade.id)) return prev;
             return { ...prev, trades: [trade, ...prev.trades].slice(0, 100) };
           }
           case 'log': {
             const entry = message.payload as FullState['logs'][number];
+            // Ein Eintrag kann sowohl im Snapshot als auch als Event ankommen,
+            // wenn er waehrend des Ladens entsteht.
+            if (prev.logs.some((existing) => existing.id === entry.id)) return prev;
             return { ...prev, logs: [...prev.logs, entry].slice(-MAX_LOGS) };
           }
           default:
