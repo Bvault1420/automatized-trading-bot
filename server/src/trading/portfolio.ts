@@ -44,7 +44,7 @@ export const portfolio = {
     return mode ? all.filter((t) => t.mode === mode) : all;
   },
 
-  /** Verfuegbares Bargeld. Im Live-Modus vom Wallet-Guthaben gespeist. */
+  /** Verfuegbares Bargeld. Im Live-Modus: Wallet minus Gas-Reserve. */
   cash(mode: TradingMode, liveCashUsd = 0): number {
     return mode === 'paper' ? db.data.paper.cashUsd : liveCashUsd;
   },
@@ -53,11 +53,17 @@ export const portfolio = {
     return this.openPositions(mode).reduce((sum, p) => sum + p.tokenAmount * p.lastPrice, 0);
   },
 
-  state(mode: TradingMode, liveCashUsd = 0): PortfolioState {
+  state(
+    mode: TradingMode,
+    liveCashUsd = 0,
+    extras: { walletUsd?: number; reservedUsd?: number } = {},
+  ): PortfolioState {
     const b = bucket(mode);
     const cash = this.cash(mode, liveCashUsd);
     const exposure = this.exposure(mode);
-    const equity = cash + exposure;
+    const reservedUsd = extras.reservedUsd ?? 0;
+    const walletUsd = extras.walletUsd ?? (mode === 'paper' ? cash : cash + reservedUsd);
+    const equity = walletUsd + exposure;
     const open = this.openPositions(mode);
     const unrealized = open.reduce((sum, p) => sum + p.unrealizedPnlUsd, 0);
     const start = b.startEquityUsd > 0 ? b.startEquityUsd : equity;
@@ -67,6 +73,8 @@ export const portfolio = {
     return {
       mode,
       cashUsd: round(cash, 4),
+      walletUsd: round(walletUsd, 4),
+      reservedUsd: round(reservedUsd, 4),
       exposureUsd: round(exposure, 4),
       equityUsd: round(equity, 4),
       startEquityUsd: round(start, 4),
@@ -81,28 +89,31 @@ export const portfolio = {
   },
 
   /** Aktualisiert Tages-/Hochwassermarken und schreibt einen Equity-Punkt. */
-  markEquity(mode: TradingMode, liveCashUsd = 0): PortfolioState {
-    const state = this.state(mode, liveCashUsd);
+  markEquity(
+    mode: TradingMode,
+    liveCashUsd = 0,
+    extras: { walletUsd?: number; reservedUsd?: number } = {},
+  ): PortfolioState {
+    const state = this.state(mode, liveCashUsd, extras);
     db.update((draft) => {
       const b = mode === 'paper' ? draft.paper : draft.live;
       if (b.startEquityUsd <= 0 && state.equityUsd > 0) b.startEquityUsd = state.equityUsd;
       if (b.dayStartEquityUsd <= 0 && state.equityUsd > 0) b.dayStartEquityUsd = state.equityUsd;
       if (state.equityUsd > b.peakEquityUsd) b.peakEquityUsd = state.equityUsd;
 
-      // Tageswechsel: Tagesverlustlimit wird taeglich neu gesetzt.
       if (Date.now() - b.dayStartedAt > 24 * 3_600_000) {
         b.dayStartedAt = Date.now();
         b.dayStartEquityUsd = state.equityUsd;
       }
 
-      const last = draft.equityCurve[draft.equityCurve.length - 1];
+      const last = [...draft.equityCurve].reverse().find((p) => p.mode === mode);
       const point: EquityPoint = {
         ts: Date.now(),
         equity: state.equityUsd,
         cash: state.cashUsd,
         exposure: state.exposureUsd,
+        mode,
       };
-      // Nur speichern wenn sich etwas geaendert hat oder 60 s vergangen sind.
       if (!last || point.ts - last.ts > 60_000 || Math.abs(point.equity - last.equity) > 0.0005) {
         draft.equityCurve.push(point);
         if (draft.equityCurve.length > MAX_EQUITY_POINTS) {
@@ -111,13 +122,14 @@ export const portfolio = {
       }
     });
 
-    const updated = this.state(mode, liveCashUsd);
+    const updated = this.state(mode, liveCashUsd, extras);
     bus.emitEvent('portfolio', updated);
     return updated;
   },
 
-  equityCurve(): EquityPoint[] {
-    return db.data.equityCurve;
+  equityCurve(mode?: TradingMode): EquityPoint[] {
+    const all = db.data.equityCurve;
+    return mode ? all.filter((p) => p.mode === mode) : all;
   },
 
   openPosition(input: {

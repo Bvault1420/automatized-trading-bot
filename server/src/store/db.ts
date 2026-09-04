@@ -58,7 +58,7 @@ const LEGACY_FACTORY_SETTINGS = {
   minEntryScore: 55,
 } as const;
 
-const STRATEGY_VERSION = 3;
+const STRATEGY_VERSION = 4;
 
 function migrateSettings(parsed: DbShape, fresh: BotSettings): BotSettings {
   const settings = { ...fresh, ...parsed.settings };
@@ -89,6 +89,14 @@ function migrateSettings(parsed: DbShape, fresh: BotSettings): BotSettings {
     }
   }
   return next;
+}
+
+function migrateLiveEquityDisplay(parsed: DbShape, draft: DbShape): void {
+  if ((parsed.version ?? 1) >= 4) return;
+  if (draft.trades.some((t) => t.mode === 'live')) return;
+  draft.live.startEquityUsd = 0;
+  draft.live.dayStartEquityUsd = 0;
+  draft.live.peakEquityUsd = 0;
 }
 
 function migratePaperForMicro(parsed: DbShape, draft: DbShape): void {
@@ -173,6 +181,7 @@ function load(): DbShape {
         live: { ...base.live, ...parsed.live },
       };
       migratePaperForMicro(parsed, merged);
+      migrateLiveEquityDisplay(parsed, merged);
       return merged;
     }
   } catch {

@@ -45,17 +45,21 @@ export async function walletState(): Promise<WalletState> {
 /** Vollstaendiger Zustand fuer den initialen Dashboard-Load. */
 export async function fullState() {
   const mode = engine.mode;
-  const liveCash = mode === 'live' ? await liveExecutor.availableCashUsd() : 0;
+  const liveSnap = mode === 'live' ? await liveExecutor.snapshotUsd() : null;
+  const liveCash = liveSnap?.availableUsd ?? 0;
+  const liveExtras = liveSnap
+    ? { walletUsd: liveSnap.walletUsd, reservedUsd: liveSnap.reservedUsd }
+    : {};
 
   return {
     status: engine.status(),
     settings: db.data.settings,
-    portfolio: portfolio.state(mode, liveCash),
+    portfolio: portfolio.state(mode, liveCash, liveExtras),
     positions: portfolio.openPositions(mode),
     closedPositions: portfolio.positions(mode).filter((p) => p.status === 'closed').slice(-50),
     trades: portfolio.trades(mode).slice(-100).reverse(),
     stats: portfolio.stats(mode),
-    equityCurve: portfolio.equityCurve(),
+    equityCurve: portfolio.equityCurve(mode),
     intel: getIntel(),
     candidates: getCandidates(),
     wallet: await walletState(),

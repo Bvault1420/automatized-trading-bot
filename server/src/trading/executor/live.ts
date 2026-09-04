@@ -74,7 +74,7 @@ export class LiveExecutor implements Executor {
     return reasons;
   }
 
-  async availableCashUsd(): Promise<number> {
+  async snapshotUsd(): Promise<{ availableUsd: number; walletUsd: number; reservedUsd: number }> {
     if (hotWallet.unlocked) {
       try {
         await sweepToNative();
@@ -83,8 +83,17 @@ export class LiveExecutor implements Executor {
       }
     }
     const snap = await readDeposits();
-    const nativeUsd = Math.max(0, snap.nativeBalance - gasReserve()) * snap.nativePriceUsd;
-    return nativeUsd + snap.tokenUsd;
+    const reservedUsd = Math.min(snap.nativeBalance, gasReserve()) * snap.nativePriceUsd;
+    const availableUsd = Math.max(0, snap.nativeBalance - gasReserve()) * snap.nativePriceUsd + snap.tokenUsd;
+    return {
+      availableUsd,
+      walletUsd: snap.totalUsd,
+      reservedUsd,
+    };
+  }
+
+  async availableCashUsd(): Promise<number> {
+    return (await this.snapshotUsd()).availableUsd;
   }
 
   private async decimals(token: Address): Promise<number> {

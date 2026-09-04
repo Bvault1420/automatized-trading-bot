@@ -214,6 +214,7 @@ export interface EquityPoint {
   equity: number;
   cash: number;
   exposure: number;
+  mode?: TradingMode;
 }
 
 export interface BotSettings {
@@ -235,6 +236,10 @@ export interface BotSettings {
 export interface PortfolioState {
   mode: TradingMode;
   cashUsd: number;
+  /** Gesamtes Wallet in USD, ohne abgezogene Gas-Reserve. */
+  walletUsd: number;
+  /** Gas-Reserve in USD, bleibt im Wallet, ist aber nicht handelbar. */
+  reservedUsd: number;
   exposureUsd: number;
   equityUsd: number;
   startEquityUsd: number;

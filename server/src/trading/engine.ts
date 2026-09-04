@@ -207,9 +207,24 @@ class Engine {
     }
   }
 
+  private async liveMarks(): Promise<{
+    availableUsd: number;
+    extras: { walletUsd?: number; reservedUsd?: number };
+  }> {
+    if (this.mode !== 'live') {
+      return { availableUsd: 0, extras: {} };
+    }
+    const snap = await liveExecutor.snapshotUsd();
+    return {
+      availableUsd: snap.availableUsd,
+      extras: { walletUsd: snap.walletUsd, reservedUsd: snap.reservedUsd },
+    };
+  }
+
   private async riskContext(): Promise<RiskContext> {
-    const availableCashUsd = await this.executor.availableCashUsd();
-    const state = portfolio.markEquity(this.mode, this.mode === 'live' ? availableCashUsd : 0);
+    const marks = await this.liveMarks();
+    const availableCashUsd = this.mode === 'live' ? marks.availableUsd : await this.executor.availableCashUsd();
+    const state = portfolio.markEquity(this.mode, availableCashUsd, marks.extras);
     return {
       settings: this.settings,
       intel: getIntel(),
@@ -337,7 +352,8 @@ class Engine {
         log.trade(`Teilverkauf ${position.symbol}: $${result.proceedsUsd.toFixed(3)} – ${reason}`);
       }
 
-      portfolio.markEquity(this.mode, this.mode === 'live' ? await this.executor.availableCashUsd() : 0);
+      const marks = await this.liveMarks();
+      portfolio.markEquity(this.mode, this.mode === 'live' ? marks.availableUsd : 0, marks.extras);
       return true;
     } finally {
       portfolio.unmarkClosing(position.id);
@@ -445,7 +461,8 @@ class Engine {
     log.trade(
       `GEKAUFT ${c.symbol} auf ${c.chain} für $${amountUsd.toFixed(2)} @ $${result.priceUsd.toPrecision(6)} · Score ${scored.score.toFixed(1)}`,
     );
-    portfolio.markEquity(this.mode, this.mode === 'live' ? await this.executor.availableCashUsd() : 0);
+    const marks = await this.liveMarks();
+    portfolio.markEquity(this.mode, this.mode === 'live' ? marks.availableUsd : 0, marks.extras);
     return true;
   }
 

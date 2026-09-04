@@ -149,6 +149,7 @@ export interface EquityPoint {
   equity: number;
   cash: number;
   exposure: number;
+  mode?: TradingMode;
 }
 
 export interface BotSettings {
@@ -170,6 +171,8 @@ export interface BotSettings {
 export interface PortfolioState {
   mode: TradingMode;
   cashUsd: number;
+  walletUsd: number;
+  reservedUsd: number;
   exposureUsd: number;
   equityUsd: number;
   startEquityUsd: number;

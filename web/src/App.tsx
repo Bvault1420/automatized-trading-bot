@@ -134,7 +134,11 @@ export default function App() {
           <Stat
             label="Gesamtkapital"
             value={usd(portfolio.equityUsd)}
-            sub={`${usd(portfolio.cashUsd)} frei · ${usd(portfolio.exposureUsd)} investiert`}
+            sub={
+              portfolio.reservedUsd > 0
+                ? `${usd(portfolio.cashUsd)} handelbar · ${usd(portfolio.reservedUsd)} Gas-Reserve`
+                : `${usd(portfolio.cashUsd)} frei · ${usd(portfolio.exposureUsd)} investiert`
+            }
             icon={<Wallet2 className="h-3.5 w-3.5" />}
           />
           <Stat
@@ -171,6 +175,15 @@ export default function App() {
             icon={<History className="h-3.5 w-3.5" />}
           />
         </div>
+
+        {!isPaper && stats.totalTrades === 0 && (
+          <p className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-2.5 text-[11px] leading-relaxed text-slate-400">
+            Noch kein Live-Trade. Dein SOL liegt weiter im Bot-Wallet – der Kurs in Dollar
+            schwankt, und {usd(portfolio.reservedUsd || 0)} bleiben als Gas-Reserve
+            unangetastet, damit ein Verkauf später durchgeht. Live kauft nur Solana-Token,
+            und gerade ist kein Setup über dem Mindest-Score.
+          </p>
+        )}
 
         <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
           <div className="space-y-5">
