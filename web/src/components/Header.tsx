@@ -1,4 +1,4 @@
-import { AlertOctagon, Download, Loader2, Pause, Play } from 'lucide-react';
+import { AlertOctagon, Download, Loader2, Pause, Play, RotateCcw } from 'lucide-react';
 import { Chip } from './ui';
 import type { BotStatus, TradingMode, WalletState } from '../lib/types';
 
@@ -10,6 +10,7 @@ export function Header({
   openPositions,
   onStart,
   onStop,
+  onResume,
   onPanic,
   onModeChange,
   onInstall,
@@ -22,6 +23,7 @@ export function Header({
   openPositions: number;
   onStart: () => void;
   onStop: () => void;
+  onResume: () => void;
   onPanic: () => void;
   onModeChange: (mode: TradingMode) => void;
   onInstall?: () => void;
@@ -86,6 +88,17 @@ export function Header({
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}
               <span className="hidden sm:inline">Stop</span>
             </button>
+          ) : status.haltReason ? (
+            <button
+              type="button"
+              className="btn-primary px-2.5 sm:px-4"
+              onClick={onResume}
+              disabled={busy}
+              aria-label="Notaus aufheben"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              <span className="hidden sm:inline">Notaus aufheben</span>
+            </button>
           ) : (
             <button type="button" className="btn-primary px-2.5 sm:px-4" onClick={onStart} disabled={busy} aria-label="Starten">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -130,11 +143,19 @@ export function Header({
         </div>
       )}
 
-      {!status.running && (status.haltReason || openPositions > 0) && (
+      {!status.running && status.haltReason && (
         <div className="border-t border-amber-500/20 bg-amber-500/5 px-3 py-2 text-center text-[11px] text-amber-300/90 sm:text-xs">
-          {status.haltReason}
-          {status.haltReason && openPositions > 0 && ' · '}
-          {openPositions > 0 && `${openPositions} Position(en) – Stop-Loss bleibt aktiv`}
+          <p>{status.haltReason}</p>
+          <p className="mt-1 text-amber-200/80">
+            Mit <strong>Notaus aufheben</strong> startet der Bot wieder mit neuen Einstiegen.
+            {openPositions > 0 && ` ${openPositions} offene Position(en) bleiben geschützt.`}
+          </p>
+        </div>
+      )}
+
+      {!status.running && !status.haltReason && openPositions > 0 && (
+        <div className="border-t border-border bg-surface-2 px-3 py-2 text-center text-[11px] text-zinc-400 sm:text-xs">
+          {openPositions} Position(en) offen – Stop-Loss bleibt aktiv
         </div>
       )}
     </header>

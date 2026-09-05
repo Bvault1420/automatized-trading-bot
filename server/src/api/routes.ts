@@ -58,6 +58,10 @@ router.post('/bot/stop', (_req, res) => {
   res.json({ ok: true, message: 'Bot gestoppt' });
 });
 
+router.post('/bot/resume', async (_req, res) => {
+  res.json(await engine.resume());
+});
+
 router.post('/bot/panic', async (_req, res) => {
   res.json(await engine.panic());
 });

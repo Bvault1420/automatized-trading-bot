@@ -64,7 +64,16 @@ export default function App() {
     [notify, refresh],
   );
 
-  // Der Notaus ist irreversibel – deshalb eine bewusste Rückfrage.
+  const resume = useCallback(() => {
+    if (
+      state?.status.haltReason &&
+      !window.confirm('Notaus/Halt aufheben und Bot wieder starten? Neue Einstiege werden dann wieder ausgeführt.')
+    ) {
+      return;
+    }
+    void action(api.resume);
+  }, [action, state?.status.haltReason]);
+
   const panic = useCallback(() => {
     if (!window.confirm('Notaus: Bot stoppen und alle Positionen sofort verkaufen?')) return;
     void action(api.panic);
@@ -127,6 +136,7 @@ export default function App() {
         openPositions={positions.length}
         onStart={() => void action(api.start)}
         onStop={() => void action(api.stop)}
+        onResume={resume}
         onPanic={panic}
         onModeChange={setMode}
         onInstall={() => void install()}

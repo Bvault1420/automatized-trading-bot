@@ -143,9 +143,13 @@ class Engine {
     db.update((draft) => {
       draft.runtime.shouldRun = false;
     });
-    if (!this.running) return;
+    const wasRunning = this.running;
     this.running = false;
     this.haltReason = reason;
+    if (!wasRunning) {
+      this.emitStatus();
+      return;
+    }
     const open = portfolio.openPositions(this.mode).length;
     log.warn(
       open > 0
@@ -153,6 +157,17 @@ class Engine {
         : `Bot gestoppt: ${reason}`,
     );
     this.emitStatus();
+  }
+
+  /** Notaus / Risiko-Halt aufheben und Handel wieder starten. */
+  async resume(): Promise<{ ok: boolean; message: string }> {
+    const prev = this.haltReason;
+    const result = await this.start(true);
+    if (!result.ok) return result;
+    if (prev) {
+      return { ok: true, message: `Halt aufgehoben – Bot läuft wieder (${prev})` };
+    }
+    return result;
   }
 
   async setMode(mode: TradingMode): Promise<{ ok: boolean; message: string }> {

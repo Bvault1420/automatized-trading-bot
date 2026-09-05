@@ -24,6 +24,7 @@ export const api = {
   state: () => call<FullState>('/state'),
   start: () => post<ActionResult>('/bot/start'),
   stop: () => post<ActionResult>('/bot/stop'),
+  resume: () => post<ActionResult>('/bot/resume'),
   panic: () => post<ActionResult>('/bot/panic'),
   setMode: (mode: TradingMode) => post<ActionResult>('/bot/mode', { mode }),
   updateSettings: (patch: Partial<BotSettings>) =>
