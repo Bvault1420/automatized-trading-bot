@@ -16,13 +16,6 @@ export interface ReconcileResult {
   txHash?: string;
 }
 
-function accountKey(keys: Array<{ pubkey: PublicKey } | PublicKey | string>, index: number): string {
-  const key = keys[index];
-  if (key instanceof PublicKey) return key.toBase58();
-  if (typeof key === 'string') return key;
-  return key.pubkey.toBase58();
-}
-
 /** Sucht eine kürzliche On-Chain-Verkaufstransaktion für einen Mint nach dem Einstieg. */
 export async function findRecentSellTx(
   owner: PublicKey,
@@ -100,6 +93,14 @@ export async function reconcileGhostPosition(position: Position): Promise<Reconc
     const priceUsd = position.lastPrice > 0 ? position.lastPrice : position.entryPrice;
 
     if (sellTx && sellTx.solDelta > 0) {
+      const alreadyRecorded = current.fills.some(
+        (f) => f.kind === 'sell' && f.txHash === sellTx.signature,
+      );
+      if (alreadyRecorded) {
+        portfolio.forceClose(position.id, 'On-Chain-Abgleich: bereits verbucht');
+        return { closed: true, reason: 'Verkauf bereits verbucht', txHash: sellTx.signature };
+      }
+
       const proceedsUsd = sellTx.solDelta * solPrice;
       const exitPrice = sellTx.tokenSold > 0 ? proceedsUsd / sellTx.tokenSold : priceUsd;
       portfolio.applySell({

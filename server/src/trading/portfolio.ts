@@ -369,6 +369,54 @@ export const portfolio = {
     });
   },
 
+  /** Hängende closing-Status zurücksetzen oder Position erzwingen schliessen. */
+  unstuckClosing(maxAgeMs = 90_000): string[] {
+    const unstuck: string[] = [];
+    const now = Date.now();
+    db.update((draft) => {
+      for (const p of draft.positions) {
+        if (p.status !== 'closing') continue;
+        const lastFill = p.fills[p.fills.length - 1];
+        const age = now - (lastFill?.ts ?? p.openedAt);
+        if (age < maxAgeMs) continue;
+        p.status = 'open';
+        unstuck.push(p.id);
+      }
+    });
+    return unstuck;
+  },
+
+  /** On-Chain-Menge in die offene Position übernehmen (nach Kauf/RPC-Lag). */
+  syncTokenAmount(positionId: string, tokenAmount: number): boolean {
+    let changed = false;
+    db.update((draft) => {
+      const p = draft.positions.find((x) => x.id === positionId);
+      if (!p || p.status === 'closed' || tokenAmount <= 0) return;
+      if (Math.abs(p.tokenAmount - tokenAmount) / Math.max(p.initialTokenAmount, 1e-12) < 0.001) return;
+      p.tokenAmount = tokenAmount;
+      const value = p.tokenAmount * p.lastPrice;
+      const invested = p.costUsd * (p.tokenAmount / Math.max(p.initialTokenAmount, 1e-18));
+      p.unrealizedPnlUsd = value - invested;
+      p.pnlUsd = p.realizedUsd + value - p.costUsd;
+      changed = true;
+    });
+    return changed;
+  },
+
+  forceClose(positionId: string, reason: string): void {
+    db.update((draft) => {
+      const p = draft.positions.find((x) => x.id === positionId);
+      if (!p || p.status === 'closed') return;
+      p.status = 'closed';
+      p.closedAt = Date.now();
+      p.exitReason = reason;
+      p.tokenAmount = 0;
+      p.unrealizedPnlUsd = 0;
+      p.pnlUsd = p.realizedUsd - p.costUsd;
+      p.pnlPct = p.costUsd > 0 ? (p.pnlUsd / p.costUsd) * 100 : 0;
+    });
+  },
+
   stats(mode?: TradingMode): Stats {
     const trades = this.trades(mode);
     if (trades.length === 0) {

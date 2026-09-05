@@ -13,7 +13,8 @@ import { confirmLiveTape } from './entry.js';
 import { decideExit } from './exits.js';
 import { decoratePosition, estimateRoundTripCostUsd, isMicroAccount, isRecoveryAccount, roundTripAllowsEntry } from './fees.js';
 import { lossCooldownMs, rememberTrade } from './learning.js';
-import { reconcileGhostPosition, reconcileOpenPositions } from './reconcile.js';
+import { healFailedSell, healLiveTrading, recoverMissedBuy } from './heal.js';
+import { reconcileOpenPositions } from './reconcile.js';
 import { PaperExecutor } from './executor/paper.js';
 import { LiveExecutor } from './executor/live.js';
 import { hotWallet } from '../chain/hot.js';
@@ -42,7 +43,7 @@ class Engine {
   private selling = new Set<string>();
   private lastAtaReclaimAt = 0;
   private lastRiskBlockLogAt = 0;
-  private lastReconcileAt = 0;
+  private sellFailCounts = new Map<string, number>();
 
   get settings(): BotSettings {
     return db.data.settings;
@@ -292,13 +293,11 @@ class Engine {
 
     await this.updatePositions();
 
-    if (this.mode === 'live' && hotWallet.unlocked && Date.now() - this.lastReconcileAt > 30_000) {
-      this.lastReconcileAt = Date.now();
+    if (this.mode === 'live' && hotWallet.unlocked) {
       try {
-        const closed = await reconcileOpenPositions('live');
-        if (closed > 0) log.warn(`${closed} Geister-Position(en) mit On-Chain-Abgleich bereinigt`);
+        await healLiveTrading();
       } catch (err) {
-        log.warn(`Positions-Abgleich fehlgeschlagen: ${(err as Error).message}`);
+        log.warn(`Auto-Reparatur fehlgeschlagen: ${(err as Error).message}`);
       }
     }
 
@@ -385,11 +384,22 @@ class Engine {
     try {
       const result = await this.executor.sell(position, fraction, this.settings.maxSlippagePct);
       if (!result.ok) {
-        if (result.error === 'Kein Token-Guthaben zum Verkaufen' && this.mode === 'live') {
-          const reconciled = await reconcileGhostPosition(position);
-          if (reconciled.closed) {
+        if (this.mode === 'live') {
+          const fails = (this.sellFailCounts.get(position.id) ?? 0) + 1;
+          this.sellFailCounts.set(position.id, fails);
+          const healed = await healFailedSell(position.id);
+          if (healed) {
+            this.sellFailCounts.delete(position.id);
             const marks = await this.liveMarks();
-            portfolio.markEquity(this.mode, this.mode === 'live' ? marks.availableUsd : 0, marks.extras);
+            portfolio.markEquity(this.mode, marks.availableUsd, marks.extras);
+            return true;
+          }
+          if (fails >= 3) {
+            log.warn(`${position.symbol}: ${fails} Verkaufsfehler – erzwinge Positions-Bereinigung`);
+            portfolio.forceClose(position.id, `Auto-Reparatur nach ${fails} fehlgeschlagenen Verkäufen`);
+            this.sellFailCounts.delete(position.id);
+            const marks = await this.liveMarks();
+            portfolio.markEquity(this.mode, marks.availableUsd, marks.extras);
             return true;
           }
         }
@@ -397,6 +407,8 @@ class Engine {
         portfolio.unmarkClosing(position.id);
         return false;
       }
+
+      this.sellFailCounts.delete(position.id);
 
       const applied = portfolio.applySell({
         positionId: position.id,
@@ -529,6 +541,14 @@ class Engine {
 
     const result = await this.executor.buy(c, amountUsd, this.settings.maxSlippagePct);
     if (!result.ok) {
+      if (this.mode === 'live') {
+        const recovered = await recoverMissedBuy(c, amountUsd);
+        if (recovered) {
+          const marks = await this.liveMarks();
+          portfolio.markEquity(this.mode, marks.availableUsd, marks.extras);
+          return true;
+        }
+      }
       log.warn(`Kauf ${c.symbol} nicht ausgeführt: ${result.error}`);
       return false;
     }
