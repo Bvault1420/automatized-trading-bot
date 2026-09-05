@@ -180,36 +180,45 @@ function evaluateSolana(data: GoPlusSolana): SecurityReport {
     score = 0;
   }
   if (on(data.freezable)) {
-    flags.push('Konten einfrierbar');
+    flags.push('Konten einfrierbar (freeze authority aktiv)');
+    score = 0;
+  }
+  if (on(data.balance_mutable_authority)) {
+    flags.push('Guthaben durch Authority änderbar');
     score -= 0.5;
   }
   if (on(data.mintable)) {
     flags.push('Nachprägbar (mint authority aktiv)');
-    score -= 0.25;
+    score -= 0.35;
   }
   if (on(data.closable)) {
     flags.push('Mint-Konto schließbar');
-    score -= 0.2;
-  }
-  if (on(data.balance_mutable_authority)) {
-    flags.push('Guthaben durch Authority änderbar');
-    score -= 0.4;
+    score -= 0.25;
   }
 
   const top10HolderPct = (data.holders ?? [])
     .slice(0, 10)
     .reduce((sum, h) => sum + safeNumber(h.percent) * 100, 0);
-  if (top10HolderPct > 60) {
+  if (top10HolderPct > 70) {
+    flags.push(`Top-10-Wallets halten ${top10HolderPct.toFixed(0)}% (Insider-Konzentration)`);
+    score -= 0.35;
+  } else if (top10HolderPct > 50) {
     flags.push(`Top-10-Wallets halten ${top10HolderPct.toFixed(0)}%`);
-    score -= 0.25;
+    score -= 0.15;
   }
 
   score = clamp(score, 0, 1);
+  const ok =
+    score >= 0.45 &&
+    data.non_transferable !== '1' &&
+    !on(data.freezable) &&
+    !on(data.balance_mutable_authority);
+
   return {
     checked: true,
-    ok: score >= 0.35 && data.non_transferable !== '1' && !on(data.freezable),
+    ok,
     score,
-    isHoneypot: data.non_transferable === '1',
+    isHoneypot: data.non_transferable === '1' || on(data.freezable),
     buyTaxPct: 0,
     sellTaxPct: 0,
     lpLocked: false,

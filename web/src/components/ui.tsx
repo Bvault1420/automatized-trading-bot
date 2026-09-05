@@ -18,7 +18,7 @@ export function Card({
   return (
     <section className={`card flex flex-col overflow-hidden ${className}`}>
       {title && (
-        <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+        <header className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-2.5 sm:px-5">
           <h2 className="card-title">
             {icon}
             {title}
@@ -52,13 +52,13 @@ export function Stat({
   } as const;
 
   return (
-    <div className="card px-3 py-3 sm:px-4 sm:py-3.5">
+    <div className="card px-3.5 py-3 sm:px-4 sm:py-3.5">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-medium text-zinc-500">{label}</span>
         {icon && <span className="text-zinc-600">{icon}</span>}
       </div>
-      <div className={`num mt-1 text-xl font-semibold tracking-tight sm:text-2xl ${toneMap[tone]}`}>{value}</div>
-      {sub && <div className="mt-0.5 text-[11px] leading-snug text-zinc-500">{sub}</div>}
+      <div className={`num mt-1 text-lg font-semibold tracking-tight sm:text-xl ${toneMap[tone]}`}>{value}</div>
+      {sub && <div className="mt-0.5 truncate text-[11px] leading-snug text-zinc-500">{sub}</div>}
     </div>
   );
 }
@@ -96,8 +96,8 @@ export function SignalBar({ score }: { score: number }) {
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-full min-h-32 flex-col items-center justify-center gap-1 py-10 text-center">
-      <p className="text-sm text-zinc-500">{children}</p>
+    <div className="flex h-full min-h-28 flex-col items-center justify-center gap-1 py-8 text-center">
+      <p className="text-xs text-zinc-500">{children}</p>
     </div>
   );
 }

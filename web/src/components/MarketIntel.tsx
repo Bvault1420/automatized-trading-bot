@@ -1,45 +1,44 @@
-import { Activity, Gauge, Newspaper, TrendingUp } from 'lucide-react';
+import { Gauge, Newspaper, TrendingUp } from 'lucide-react';
 import { Card, Chip, SignalBar } from './ui';
 import { pct, timeAgo, toneClass, usd } from '../lib/format';
 import type { MarketIntel as Intel } from '../lib/types';
 
 function RiskGauge({ value, regime }: { value: number; regime: Intel['regime'] }) {
   const percent = Math.round(value * 100);
-  // Halbkreis-Anzeige: 180 Grad Bogen, gefuellt entsprechend Risikoappetit.
-  const radius = 58;
+  const radius = 54;
   const circumference = Math.PI * radius;
   const filled = circumference * value;
 
   const tone =
     regime === 'risk-on'
-      ? { stroke: '#3ecf8e', label: 'Risk-on', chip: 'positive' as const }
+      ? { stroke: '#10b981', label: 'Risk-on', chip: 'positive' as const }
       : regime === 'risk-off'
-        ? { stroke: '#f87171', label: 'Risk-off', chip: 'negative' as const }
+        ? { stroke: '#ef4444', label: 'Risk-off', chip: 'negative' as const }
         : { stroke: '#f59e0b', label: 'Neutral', chip: 'amber' as const };
 
   return (
     <div className="flex flex-col items-center">
-      <svg viewBox="0 0 140 78" className="w-full max-w-[190px]">
+      <svg viewBox="0 0 140 76" className="w-full max-w-[170px]">
         <path
-          d={`M ${70 - radius} 70 A ${radius} ${radius} 0 0 1 ${70 + radius} 70`}
+          d={`M ${70 - radius} 68 A ${radius} ${radius} 0 0 1 ${70 + radius} 68`}
           fill="none"
-          stroke="rgba(255,255,255,0.07)"
-          strokeWidth={11}
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth={10}
           strokeLinecap="round"
         />
         <path
-          d={`M ${70 - radius} 70 A ${radius} ${radius} 0 0 1 ${70 + radius} 70`}
+          d={`M ${70 - radius} 68 A ${radius} ${radius} 0 0 1 ${70 + radius} 68`}
           fill="none"
           stroke={tone.stroke}
-          strokeWidth={11}
+          strokeWidth={10}
           strokeLinecap="round"
           strokeDasharray={`${filled} ${circumference}`}
           style={{ transition: 'stroke-dasharray 700ms ease, stroke 400ms ease' }}
         />
-        <text x="70" y="58" textAnchor="middle" className="num" fontSize="26" fontWeight="700" fill="#f1f5f9">
+        <text x="70" y="56" textAnchor="middle" className="num" fontSize="24" fontWeight="700" fill="#f4f4f5">
           {percent}
         </text>
-        <text x="70" y="72" textAnchor="middle" fontSize="8.5" fill="#64748b" letterSpacing="1.2">
+        <text x="70" y="70" textAnchor="middle" fontSize="8" fill="#71717a" letterSpacing="1">
           RISIKOAPPETIT
         </text>
       </svg>
@@ -55,47 +54,47 @@ export function MarketIntelPanel({ intel }: { intel: Intel }) {
     <Card
       title="Marktlage"
       icon={<Gauge className="h-3.5 w-3.5" />}
-      action={<span className="text-[10px] text-slate-600">{timeAgo(intel.updatedAt)}</span>}
-      bodyClassName="p-5 space-y-4"
+      action={<span className="text-[10px] text-zinc-500">{timeAgo(intel.updatedAt)}</span>}
+      bodyClassName="p-4 space-y-4 sm:p-5"
     >
-      <div className="grid grid-cols-[auto_1fr] items-center gap-5">
+      <div className="grid grid-cols-[auto_1fr] items-center gap-4 sm:gap-5">
         <RiskGauge value={intel.riskAppetite} regime={intel.regime} />
         <div className="space-y-2.5">
           {fg && (
             <div>
               <div className="flex items-baseline justify-between">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
                   Fear &amp; Greed
                 </span>
-                <span className="num text-sm font-bold text-slate-200">
+                <span className="num text-xs font-semibold text-zinc-200">
                   {fg.value}
-                  <span className="ml-1 text-[10px] font-medium text-slate-500">/100</span>
+                  <span className="ml-0.5 text-[10px] text-zinc-500">/100</span>
                 </span>
               </div>
-              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gradient-to-r from-rose-600 via-amber-500 to-emerald-500">
+              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
                 <div
-                  className="h-full w-0.5 bg-white shadow-[0_0_6px_rgba(255,255,255,0.9)] transition-all duration-700"
-                  style={{ marginLeft: `${fg.value}%` }}
+                  className="h-full rounded-full bg-accent transition-all duration-700"
+                  style={{ width: `${fg.value}%` }}
                 />
               </div>
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[11px] text-zinc-500">
                 {fg.classification} · Vortag {fg.previous}
               </p>
             </div>
           )}
 
           {intel.macro && (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               {(['btc', 'eth', 'sol'] as const).map((key) => {
                 const coin = intel.macro?.[key];
                 if (!coin) return null;
                 return (
-                  <div key={key} className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-2 py-1.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{key}</div>
-                    <div className={`num text-xs font-bold ${toneClass(coin.change24h)}`}>
+                  <div key={key} className="rounded-lg border border-border/80 bg-surface-2 px-2 py-1.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{key}</div>
+                    <div className={`num text-xs font-semibold ${toneClass(coin.change24h)}`}>
                       {pct(coin.change24h)}
                     </div>
-                    <div className="num text-[10px] text-slate-600">{usd(coin.price, 0)}</div>
+                    <div className="num text-[10px] text-zinc-500">{usd(coin.price, 0)}</div>
                   </div>
                 );
               })}
@@ -104,16 +103,16 @@ export function MarketIntelPanel({ intel }: { intel: Intel }) {
         </div>
       </div>
 
-      <p className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-xs leading-relaxed text-slate-400">
+      <p className="rounded-lg border border-border/80 bg-surface-2 px-3 py-2 text-xs leading-relaxed text-zinc-400">
         {intel.narrative}
       </p>
 
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         {intel.signals.map((signal) => (
           <div key={signal.key} className="group">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-xs font-medium text-slate-300">{signal.label}</span>
-              <span className={`num text-[11px] font-bold ${toneClass(signal.score)}`}>
+              <span className="text-xs text-zinc-300">{signal.label}</span>
+              <span className={`num text-[11px] font-semibold ${toneClass(signal.score)}`}>
                 {signal.score >= 0 ? '+' : ''}
                 {(signal.score * 100).toFixed(0)}
               </span>
@@ -121,80 +120,71 @@ export function MarketIntelPanel({ intel }: { intel: Intel }) {
             <div className="mt-1">
               <SignalBar score={signal.score} />
             </div>
-            <p className="mt-1 text-[10px] leading-relaxed text-slate-600">{signal.detail}</p>
+            <p className="mt-0.5 text-[10px] text-zinc-500">{signal.detail}</p>
           </div>
         ))}
       </div>
+
+      {intel.social.trendingTerms.length > 0 && (
+        <div className="border-t border-border/60 pt-3">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+            <TrendingUp className="h-3.5 w-3.5 text-accent" />
+            <span>Trending Begriffe</span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {intel.social.trendingTerms.map((term) => (
+              <Chip key={term.term}>
+                <span className="text-zinc-300">${term.term}</span>
+                <span className="num text-[10px] text-zinc-500">×{term.mentions}</span>
+              </Chip>
+            ))}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
 
 export function NewsPanel({ intel }: { intel: Intel }) {
-  const items = intel.news.items.slice(0, 14);
+  const news = intel.news;
 
   return (
     <Card
-      title="Nachrichten & Stimmung"
+      title="Nachrichten & Signale"
       icon={<Newspaper className="h-3.5 w-3.5" />}
       action={
-        <div className="flex items-center gap-1.5">
-          {intel.social.freshPosts > 0 && (
-            <Chip tone="positive">{intel.social.freshPosts} Posts / {intel.social.freshWindowMinutes} Min.</Chip>
-          )}
-          {intel.news.filteredOut ? <Chip tone="slate">{intel.news.filteredOut} Lärm raus</Chip> : null}
-          <Chip tone="positive">{intel.news.bullishCount} bullisch</Chip>
-          <Chip tone="negative">{intel.news.bearishCount} bärisch</Chip>
-        </div>
+        <span className="text-[10px] text-zinc-500">
+          {news.bullishCount}↑ / {news.bearishCount}↓
+        </span>
       }
       bodyClassName="p-0"
     >
-      {intel.social.trendingTerms.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 border-b border-white/[0.06] px-5 py-3">
-          <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-            <TrendingUp className="h-3 w-3" /> Trends
-          </span>
-          {intel.social.trendingTerms.slice(0, 7).map((term) => (
-            <span
-              key={term.term}
-              className="rounded-md bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-semibold text-slate-400"
-            >
-              {term.term}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div className="max-h-80 divide-y divide-white/[0.04] overflow-y-auto">
-        {items.map((item, index) => (
+      <div className="divide-y divide-border/60">
+        {news.items.slice(0, 8).map((item, idx) => (
           <a
-            key={`${item.url}-${index}`}
+            key={idx}
             href={item.url}
             target="_blank"
             rel="noreferrer"
-            className="flex items-start gap-3 px-5 py-2.5 transition-colors hover:bg-white/[0.03]"
+            className="flex items-start justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-surface-2/40 sm:px-5"
           >
-            <span
-              className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                item.sentiment > 0.15 ? 'bg-positive' : item.sentiment < -0.15 ? 'bg-negative' : 'bg-zinc-600'
-              }`}
-            />
             <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 text-xs leading-relaxed text-slate-300">{item.title}</p>
-              <p className="mt-0.5 text-[10px] text-slate-600">
-                {item.importanceTier === 'high' && (
-                  <span className="mr-1.5 font-medium text-positive">Wichtig</span>
+              <p className="line-clamp-2 text-xs font-medium text-zinc-200">{item.title}</p>
+              <div className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-500">
+                <span>{item.source}</span>
+                <span>·</span>
+                <span>{timeAgo(item.publishedAt)}</span>
+                {item.matchedTerms?.length > 0 && (
+                  <span className="text-accent">{item.matchedTerms.join(', ')}</span>
                 )}
-                {item.source} · {timeAgo(item.publishedAt)}
-                {item.importanceWhy ? ` · ${item.importanceWhy}` : ''}
-              </p>
+              </div>
             </div>
+            <span className={`num shrink-0 text-xs font-semibold ${toneClass(item.sentiment)}`}>
+              {item.sentiment > 0 ? '+' : ''}
+              {(item.sentiment * 100).toFixed(0)}
+            </span>
           </a>
         ))}
-        {items.length === 0 && (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-500">
-            <Activity className="h-4 w-4" /> Nachrichten werden geladen …
-          </div>
-        )}
       </div>
     </Card>
   );

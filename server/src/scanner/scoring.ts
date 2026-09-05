@@ -53,7 +53,7 @@ export function hardRejections(c: TokenCandidate, security: SecurityReport, ctx:
   const txnsH1 = c.txns.h1.buys + c.txns.h1.sells;
   if (txnsH1 < 15) reasons.push('Zu wenige Transaktionen (1h)');
 
-  if (c.ageHours < 0.2) reasons.push('Paar zu jung (< 12 Min.) – Rug-Fenster');
+  if (c.ageHours < 0.15) reasons.push('Paar extrem jung (< 9 Min.) – Hohes Rug-Risiko');
   if (c.ageHours > 21 * 24 && c.volume.h1 < 25_000 && c.priceChange.h24 < 8) {
     reasons.push('Altes, ausgereiztes Paar ohne frische Nachfrage');
   }

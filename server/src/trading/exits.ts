@@ -191,6 +191,15 @@ export function decideExit(
     };
   }
 
+  // Für Micro-Konten: Ein früher Teilprofit wenn +12% erreicht und Netto positiv
+  if (micro && pnlPct >= 12 && net.netPct >= 4) {
+    return {
+      fraction: 1,
+      reason: `Quick-Profit bei +${pnlPct.toFixed(1)}% (netto +${net.netPct.toFixed(1)}%)`,
+      urgent: false,
+    };
+  }
+
   if (!micro && position.partialsTaken >= 1 && pnlPct >= settings.takeProfitPct * 1.8) {
     if (!netEnough) return null;
     return { fraction: 0.5, reason: `Zweiter Teilgewinn bei +${pnlPct.toFixed(1)}%`, urgent: false };

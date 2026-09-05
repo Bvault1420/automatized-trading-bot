@@ -93,7 +93,7 @@ export default function App() {
       <div className="flex min-h-[100dvh] flex-col items-center justify-center px-4">
         <div className="flex flex-col items-center gap-3">
           <Activity className="h-7 w-7 animate-pulse text-accent" />
-          <p className="text-center text-sm text-zinc-500">
+          <p className="text-center text-xs text-zinc-500">
             {connection === 'offline' ? 'Keine Verbindung zum Bot-Server …' : 'Dashboard wird geladen …'}
           </p>
         </div>
@@ -143,13 +143,13 @@ export default function App() {
       )}
 
       <main className="mx-auto max-w-[1600px] space-y-4 px-3 py-4 sm:space-y-5 sm:px-5 sm:py-6">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-6">
           <Stat
             label="Gesamtkapital"
             value={usd(portfolio.equityUsd)}
             sub={
               portfolio.reservedUsd > 0
-                ? `${usd(portfolio.walletUsd ?? portfolio.equityUsd - portfolio.exposureUsd)} Wallet inkl. ${usd(portfolio.reservedUsd)} Gas (kein Verlust) · ${usd(portfolio.exposureUsd)} Token`
+                ? `${usd(portfolio.cashUsd)} frei · ${usd(portfolio.reservedUsd)} Gas`
                 : `${usd(portfolio.cashUsd)} frei · ${usd(portfolio.exposureUsd)} investiert`
             }
             icon={<Wallet2 className="h-3.5 w-3.5" />}
@@ -157,11 +157,7 @@ export default function App() {
           <Stat
             label="Gesamt-Ergebnis"
             value={pct(portfolio.totalPnlPct)}
-            sub={
-              (portfolio.feesUsd ?? 0) > 0.02
-                ? `Start ${usd(portfolio.startEquityUsd)} · Gebühren/Gas ~${usd(portfolio.feesUsd ?? 0)}`
-                : `Start ${usd(portfolio.startEquityUsd)}`
-            }
+            sub={`Start ${usd(portfolio.startEquityUsd)}`}
             tone={portfolio.totalPnlPct > 0 ? 'good' : portfolio.totalPnlPct < 0 ? 'bad' : 'neutral'}
             icon={<BarChart3 className="h-3.5 w-3.5" />}
           />
@@ -175,7 +171,7 @@ export default function App() {
           <Stat
             label="Trefferquote"
             value={`${stats.winRatePct.toFixed(0)}%`}
-            sub={`${stats.wins} Gewinne / ${stats.losses} Verluste`}
+            sub={`${stats.wins}W / ${stats.losses}L (${stats.totalTrades} gesamt)`}
             tone={stats.winRatePct >= 50 ? 'good' : stats.totalTrades > 0 ? 'bad' : 'neutral'}
             icon={<Target className="h-3.5 w-3.5" />}
           />
@@ -188,42 +184,19 @@ export default function App() {
           <Stat
             label="Ø Haltedauer"
             value={stats.avgHoldSeconds > 0 ? duration(stats.avgHoldSeconds) : '–'}
-            sub={`${stats.totalTrades} Trades gesamt`}
+            sub={`${stats.totalTrades} Trades`}
             icon={<History className="h-3.5 w-3.5" />}
           />
         </div>
 
-        {!isPaper && (stats.totalTrades === 0 || (portfolio.feesUsd ?? 0) > 0.05) && (
-          <p className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-2.5 text-[11px] leading-relaxed text-slate-400">
-            {stats.totalTrades === 0 ? (
-              <>
-                Noch kein Live-Trade. Dein SOL liegt weiter im Bot-Wallet – der Kurs in Dollar
-                schwankt, und {usd(portfolio.reservedUsd || 0)} bleiben als Gas-Reserve
-                unangetastet, damit ein Verkauf später durchgeht. Live kauft nur Solana-Token,
-                und gerade ist kein Setup über dem Mindest-Score.
-              </>
-            ) : (
-              <>
-                Offene Positionen können im Plus stehen, während Gesamtkapital minus ist:
-                Kauf/Verkauf auf Solana kostet Gas, Slippage und oft Token-Konto-Miete – das
-                steckt nicht in der Positions-Prozentanzeige. Die Gas-Reserve
-                ({usd(portfolio.reservedUsd || 0)}) liegt weiter im Wallet, das ist kein Verlust.
-                Der Bot nimmt Mini-Gewinne nicht mehr mit, wenn sie nach Fees rot wären, und
-                verkauft auf Mini-Konten in einem Zug. Gas &lt; Gewinn ist nicht garantiert:
-                Memecoins können zwischen zwei Ticks dumpfen.
-              </>
-            )}
-          </p>
-        )}
-
-        <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
-          <div className="space-y-5">
+        <div className="grid gap-4 xl:grid-cols-[1fr_380px] sm:gap-5">
+          <div className="space-y-4 sm:space-y-5">
             <Card
               title="Kapitalverlauf"
               icon={<BarChart3 className="h-3.5 w-3.5" />}
               action={
-                <span className="text-[10px] text-slate-600">
-                  {status.lastTickAt ? `Letzte Prüfung ${timeAgo(status.lastTickAt)}` : 'wartet …'}
+                <span className="text-[10px] text-zinc-500">
+                  {status.lastTickAt ? `Prüfung ${timeAgo(status.lastTickAt)}` : 'wartet …'}
                 </span>
               }
               bodyClassName="px-3 py-4"
@@ -232,22 +205,22 @@ export default function App() {
             </Card>
 
             <Card bodyClassName="p-0">
-              <nav className="scrollbar-hide flex items-center gap-1 overflow-x-auto border-b border-border px-2 py-2 sm:px-3">
+              <nav className="scrollbar-hide flex items-center gap-1 overflow-x-auto border-b border-border/80 px-2 py-2 sm:px-3">
                 {tabs.map(({ key, label, icon: Icon, count }) => (
                   <button
                     key={key}
                     type="button"
                     onClick={() => setTab(key)}
-                    className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:gap-2 sm:px-3.5 ${
+                    className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors sm:px-3.5 ${
                       tab === key
-                        ? 'bg-surface-3 text-zinc-100'
+                        ? 'bg-surface-3 text-zinc-100 shadow-xs'
                         : 'text-zinc-500 hover:bg-surface-2 hover:text-zinc-300'
                     }`}
                   >
                     <Icon className="h-3.5 w-3.5" />
                     {label}
                     {count !== undefined && count > 0 && (
-                      <span className="num rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-slate-400">
+                      <span className="num rounded-full bg-surface-2 border border-border px-1.5 py-0.2 text-[10px] text-zinc-400">
                         {count}
                       </span>
                     )}
@@ -276,21 +249,18 @@ export default function App() {
             <NewsPanel intel={intel} />
           </div>
 
-          <aside className="space-y-5">
+          <aside className="space-y-4 sm:space-y-5">
             <MarketIntelPanel intel={intel} />
             <WalletPanel wallet={wallet} onNotify={notify} onRefresh={refresh} />
             <SettingsPanel settings={settings} isPaper={isPaper} onNotify={notify} onRefresh={refresh} />
           </aside>
         </div>
 
-        <footer className="flex items-start gap-2.5 rounded-lg border border-border bg-surface-1 px-4 py-3 sm:px-5 sm:py-3.5">
+        <footer className="flex items-start gap-2.5 rounded-xl border border-border/80 bg-surface-1 px-4 py-3 sm:px-5 sm:py-3.5">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
           <p className="text-[11px] leading-relaxed text-zinc-500">
-            <span className="font-medium text-zinc-400">Risiko.</span> Memecoin-Handel ist hochspekulativ.
-            Kein Algorithmus kann Gewinne oder eine bestimmte Trefferquote garantieren – auch dieser nicht. Der Bot
-            arbeitet mit Wahrscheinlichkeiten, und Totalverluste einzelner Positionen sind normaler Teil der
-            Strategie. Setze ausschließlich Geld ein, dessen Verlust du verkraften kannst, und teste zuerst
-            ausgiebig im Simulationsmodus.
+            <span className="font-semibold text-zinc-400">Risikohinweis:</span> Memecoin-Handel birgt erhebliche Risiken.
+            Der Bot filtert Setups mit mathematischen und sicherheitsanalytischen Modellen, kann jedoch keine Gewinne garantieren.
           </p>
         </footer>
       </main>
@@ -299,10 +269,10 @@ export default function App() {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`slide-in pointer-events-auto flex max-w-sm items-start gap-2.5 rounded-lg border px-4 py-3 text-xs font-medium shadow-lg ${
+            className={`slide-in pointer-events-auto flex max-w-sm items-start gap-2.5 rounded-xl border px-3.5 py-2.5 text-xs font-medium shadow-lg backdrop-blur-md ${
               toast.ok
-                ? 'border-positive/30 bg-surface-2 text-positive'
-                : 'border-negative/30 bg-surface-2 text-negative'
+                ? 'border-positive/30 bg-surface-2/95 text-positive'
+                : 'border-negative/30 bg-surface-2/95 text-negative'
             }`}
           >
             {toast.ok ? (
@@ -310,7 +280,7 @@ export default function App() {
             ) : (
               <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
             )}
-            {toast.message}
+            <span className="leading-snug">{toast.message}</span>
           </div>
         ))}
       </div>

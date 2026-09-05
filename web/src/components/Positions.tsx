@@ -14,7 +14,7 @@ export function PositionsTable({
   const [closing, setClosing] = useState<string | null>(null);
 
   if (positions.length === 0) {
-    return <Empty>Keine offenen Positionen. Der Bot wartet auf ein Setup mit ausreichendem Score.</Empty>;
+    return <Empty>Keine offenen Positionen. Der Bot prüft den Markt alle 5 Sekunden nach Setups.</Empty>;
   }
 
   const handleClose = async (id: string) => {
@@ -27,14 +27,14 @@ export function PositionsTable({
   };
 
   return (
-    <div className="divide-y divide-white/[0.04]">
+    <div className="divide-y divide-border/60">
       {positions.map((position) => {
         const held = (Date.now() - position.openedAt) / 1000;
         const peakDrawdown =
           position.peakPrice > 0 ? ((position.peakPrice - position.lastPrice) / position.peakPrice) * 100 : 0;
 
         return (
-          <div key={position.id} className="px-5 py-3.5">
+          <div key={position.id} className="px-4 py-3.5 sm:px-5">
             <div className="flex flex-wrap items-center gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -42,10 +42,10 @@ export function PositionsTable({
                     href={position.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-1 text-sm font-bold text-zinc-100 hover:text-accent"
+                    className="flex items-center gap-1 text-sm font-semibold text-zinc-100 hover:text-accent"
                   >
                     {position.symbol}
-                    <ExternalLink className="h-3 w-3 text-slate-600" />
+                    <ExternalLink className="h-3 w-3 text-zinc-500" />
                   </a>
                   <Chip>{position.chain}</Chip>
                   {position.partialsTaken > 0 && (
@@ -53,11 +53,11 @@ export function PositionsTable({
                   )}
                   {position.status === 'closing' && <Chip tone="amber">wird verkauft …</Chip>}
                 </div>
-                <p className="mt-0.5 truncate text-[10px] text-slate-600">{position.entryReason}</p>
+                <p className="mt-0.5 truncate text-[11px] text-zinc-500">{position.entryReason}</p>
               </div>
 
               <div className="text-right">
-                <div className={`num text-lg font-bold ${toneClass(position.netPnlPct ?? position.pnlPct)}`}>
+                <div className={`num text-base font-semibold ${toneClass(position.netPnlPct ?? position.pnlPct)}`}>
                   {pct(position.netPnlPct ?? position.pnlPct)}
                 </div>
                 <div className={`num text-[11px] ${toneClass(position.netPnlUsd ?? position.pnlUsd)}`}>
@@ -65,8 +65,8 @@ export function PositionsTable({
                   {usd(position.netPnlUsd ?? position.pnlUsd, 3)}
                 </div>
                 {position.estimatedExitCostUsd != null && position.estimatedExitCostUsd > 0.01 && (
-                  <div className="text-[10px] text-slate-600">
-                    Kurs {pct(position.pnlPct)} · Verkauf ~{usd(position.estimatedExitCostUsd, 2)}
+                  <div className="text-[10px] text-zinc-500">
+                    Kurs {pct(position.pnlPct)} · Exit-Gebühr ~{usd(position.estimatedExitCostUsd, 2)}
                   </div>
                 )}
               </div>
@@ -108,8 +108,8 @@ export function PositionsTable({
 function Field({ label, value, tone }: { label: string; value: string; tone?: number }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-slate-600">{label}</div>
-      <div className={`num font-semibold ${tone !== undefined ? toneClass(tone) : 'text-slate-300'}`}>{value}</div>
+      <div className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">{label}</div>
+      <div className={`num font-medium ${tone !== undefined ? toneClass(tone) : 'text-zinc-300'}`}>{value}</div>
     </div>
   );
 }
@@ -119,50 +119,53 @@ export function TradesTable({ trades }: { trades: Trade[] }) {
     return <Empty>Noch keine abgeschlossenen Trades.</Empty>;
   }
 
+  const reversed = [...trades].reverse();
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-xs">
-        <thead className="border-b border-white/[0.06] text-[10px] uppercase tracking-wider text-slate-600">
-          <tr>
-            <th className="px-5 py-2.5 font-semibold">Token</th>
-            <th className="px-3 py-2.5 font-semibold">Einstieg</th>
-            <th className="px-3 py-2.5 font-semibold">Ausstieg</th>
-            <th className="px-3 py-2.5 font-semibold">Dauer</th>
-            <th className="px-3 py-2.5 font-semibold">Score</th>
-            <th className="px-3 py-2.5 font-semibold">Grund</th>
-            <th className="px-5 py-2.5 text-right font-semibold">Ergebnis</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-white/[0.04]">
-          {trades.map((trade) => (
-            <tr key={`${trade.id}-${trade.closedAt}`} className="transition-colors hover:bg-white/[0.02]">
-              <td className="px-5 py-2.5">
-                <a
-                  href={trade.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-semibold text-zinc-200 hover:text-accent"
-                >
-                  {trade.symbol}
-                </a>
-                <div className="text-[10px] text-slate-600">{trade.chain}</div>
-              </td>
-              <td className="num px-3 py-2.5 text-slate-400">{price(trade.entryPrice)}</td>
-              <td className="num px-3 py-2.5 text-slate-400">{price(trade.exitPrice)}</td>
-              <td className="num px-3 py-2.5 text-slate-400">{duration(trade.holdSeconds)}</td>
-              <td className="num px-3 py-2.5 text-slate-400">{trade.entryScore.toFixed(0)}</td>
-              <td className="max-w-52 truncate px-3 py-2.5 text-slate-500">{trade.exitReason}</td>
-              <td className="px-5 py-2.5 text-right">
-                <div className={`num font-bold ${toneClass(trade.pnlPct)}`}>{pct(trade.pnlPct)}</div>
-                <div className={`num text-[10px] ${toneClass(trade.pnlUsd)}`}>
-                  {trade.pnlUsd >= 0 ? '+' : ''}
-                  {usd(trade.pnlUsd, 3)}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="divide-y divide-border/60">
+      {reversed.map((trade) => {
+        const isWin = trade.pnlUsd > 0;
+        return (
+          <div key={trade.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-5">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-zinc-100">{trade.symbol}</span>
+                <Chip tone={isWin ? 'positive' : 'negative'}>{trade.chain}</Chip>
+                <span className="text-[11px] text-zinc-500">
+                  {new Date(trade.closedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              <p className="mt-0.5 truncate text-[11px] text-zinc-500">{trade.exitReason}</p>
+            </div>
+
+            <div className="text-right">
+              <div className={`num text-sm font-semibold ${toneClass(trade.pnlPct)}`}>
+                {trade.pnlPct >= 0 ? '+' : ''}
+                {pct(trade.pnlPct)}
+              </div>
+              <div className={`num text-[11px] ${toneClass(trade.pnlUsd)}`}>
+                {trade.pnlUsd >= 0 ? '+' : ''}
+                {usd(trade.pnlUsd, 3)}
+              </div>
+            </div>
+
+            <div className="hidden grid-cols-3 gap-3 text-right text-[11px] sm:grid">
+              <div>
+                <div className="text-[10px] text-zinc-500">Einsatz</div>
+                <div className="num text-zinc-300">{usd(trade.costUsd, 2)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-zinc-500">Dauer</div>
+                <div className="num text-zinc-300">{duration(trade.holdSeconds)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-zinc-500">Ergebnis</div>
+                <div className={`num font-semibold ${toneClass(trade.pnlUsd)}`}>{usd(trade.pnlUsd, 3)}</div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
