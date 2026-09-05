@@ -1,0 +1,20 @@
+[Unit]
+Description=Aletheia Trading Bot (24/7)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Pfad und User anpassen:
+WorkingDirectory=/opt/aletheia
+User=ubuntu
+Environment=NODE_ENV=production
+EnvironmentFile=-/opt/aletheia/.env
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

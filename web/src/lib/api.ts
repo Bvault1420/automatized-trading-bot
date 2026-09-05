@@ -1,0 +1,50 @@
+import type { BotSettings, FullState, TradingMode } from './types';
+
+const BASE = '/api';
+
+async function call<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { 'content-type': 'application/json' },
+    ...options,
+  });
+  const data = (await res.json().catch(() => ({}))) as T & { message?: string };
+  if (!res.ok) throw new Error(data.message ?? `Fehler ${res.status}`);
+  return data;
+}
+
+const post = <T>(path: string, body?: unknown) =>
+  call<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
+
+export interface ActionResult {
+  ok: boolean;
+  message: string;
+}
+
+export const api = {
+  state: () => call<FullState>('/state'),
+  start: () => post<ActionResult>('/bot/start'),
+  stop: () => post<ActionResult>('/bot/stop'),
+  setMode: (mode: TradingMode) => post<ActionResult>('/bot/mode', { mode }),
+  updateSettings: (patch: Partial<BotSettings>) =>
+    call<{ ok: boolean; settings: BotSettings }>('/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  closePosition: (id: string) => post<ActionResult>(`/positions/${id}/close`),
+  closeAll: () => post<ActionResult>('/positions/close-all'),
+  connectOwner: (address: string) => post<ActionResult>('/wallet/owner', { address }),
+  disconnectOwner: () => post<ActionResult>('/wallet/disconnect'),
+  createWallet: (passphrase: string) => post<ActionResult & { address: string }>('/wallet/create', { passphrase }),
+  unlockWallet: (passphrase: string) => post<ActionResult>('/wallet/unlock', { passphrase }),
+  lockWallet: () => post<ActionResult>('/wallet/lock'),
+  withdraw: (passphrase: string, to?: string) =>
+    post<ActionResult & { txHash: string }>('/wallet/withdraw', to ? { passphrase, to } : { passphrase }),
+  exportKey: (passphrase: string) => post<{ ok: boolean; privateKey: string }>('/wallet/export', { passphrase }),
+  changePassphrase: (current: string, next: string) =>
+    post<ActionResult>('/wallet/passphrase', { current, next }),
+  resetWallet: (confirm: string) => post<ActionResult>('/wallet/reset', { confirm }),
+  sweep: () => post<ActionResult>('/wallet/sweep'),
+  prepareDeposit: (from: string, symbol: string, amountEur: number) =>
+    post<ActionResult & { transaction: string }>('/wallet/prepare-deposit', { from, symbol, amountEur }),
+  resetPaper: (balance: number) => post<ActionResult>('/paper/reset', { balance }),
+};
