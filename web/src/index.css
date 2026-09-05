@@ -1,114 +1,104 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-ink-950: #05070d;
-  --color-ink-900: #0a0e18;
-  --color-ink-850: #0e1422;
-  --color-ink-800: #131b2c;
-  --color-ink-700: #1c2740;
-  --color-ink-600: #2a3854;
+  --color-surface-0: #09090b;
+  --color-surface-1: #111114;
+  --color-surface-2: #18181c;
+  --color-surface-3: #222228;
+  --color-border: #2a2a32;
+  --color-muted: #71717a;
+  --color-accent: #5b8def;
+  --color-positive: #3ecf8e;
+  --color-negative: #f87171;
 
-  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  --font-mono: 'SF Mono', ui-monospace, 'Cascadia Code', monospace;
 }
 
 @layer base {
   html {
     color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
-    @apply bg-ink-950 text-slate-200 antialiased;
-    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
-    background-image:
-      radial-gradient(ellipse 80% 50% at 20% -10%, rgba(16, 185, 129, 0.09), transparent),
-      radial-gradient(ellipse 60% 50% at 90% 0%, rgba(99, 102, 241, 0.08), transparent);
-    background-attachment: fixed;
+    @apply bg-surface-0 text-zinc-200 antialiased;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
   }
 
   ::-webkit-scrollbar {
-    width: 9px;
-    height: 9px;
+    width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-ink-700;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-ink-600;
+    @apply rounded-full bg-surface-3;
   }
 }
 
 @layer components {
   .card {
-    @apply rounded-2xl border border-white/[0.07] bg-ink-900/70 backdrop-blur-xl;
-    box-shadow:
-      0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
-      0 20px 40px -24px rgba(0, 0, 0, 0.9);
+    @apply rounded-lg border border-border bg-surface-1;
   }
 
   .card-title {
-    @apply flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400;
+    @apply flex items-center gap-2 text-xs font-medium text-zinc-400;
   }
 
-  /* Tailwind v4 erlaubt kein @apply auf eigene Komponentenklassen, deshalb wird
-     die gemeinsame Basis ueber einen Gruppenselektor definiert. */
   .btn,
   .btn-primary,
   .btn-danger,
   .btn-ghost {
-    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold
-      transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium
+      transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40;
   }
 
   .btn-primary {
-    @apply bg-emerald-500 text-emerald-950 hover:bg-emerald-400 active:scale-[0.98];
+    @apply bg-zinc-100 text-zinc-900 hover:bg-white active:bg-zinc-200;
   }
 
   .btn-danger {
-    @apply bg-rose-500/90 text-white hover:bg-rose-500 active:scale-[0.98];
+    @apply bg-negative/15 text-negative hover:bg-negative/25;
   }
 
   .btn-ghost {
-    @apply border border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/20 hover:bg-white/[0.07];
+    @apply border border-border bg-surface-2 text-zinc-300 hover:bg-surface-3 hover:text-zinc-100;
   }
 
   .input {
-    @apply w-full rounded-xl border border-white/10 bg-ink-950/70 px-3 py-2 text-sm text-slate-100
-      outline-none transition-colors placeholder:text-slate-600 focus:border-emerald-500/60;
+    @apply min-h-11 w-full rounded-lg border border-border bg-surface-0 px-3 py-2 text-sm text-zinc-100
+      outline-none transition-colors placeholder:text-zinc-600 focus:border-accent/60;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold;
+    @apply inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium;
   }
 
   .num {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
-}
 
-@keyframes pulse-ring {
-  0% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  .safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
-  70% {
-    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
-  }
-}
 
-.live-dot {
-  animation: pulse-ring 2s infinite;
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @keyframes slide-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;

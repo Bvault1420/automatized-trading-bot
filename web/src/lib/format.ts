@@ -67,4 +67,4 @@ export function ageLabel(hours: number): string {
 }
 
 export const toneClass = (value: number): string =>
-  value > 0 ? 'text-emerald-400' : value < 0 ? 'text-rose-400' : 'text-slate-400';
+  value > 0 ? 'text-positive' : value < 0 ? 'text-negative' : 'text-zinc-400';

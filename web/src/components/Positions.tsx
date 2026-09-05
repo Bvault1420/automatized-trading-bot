@@ -42,14 +42,14 @@ export function PositionsTable({
                     href={position.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-1 text-sm font-bold text-slate-100 hover:text-emerald-300"
+                    className="flex items-center gap-1 text-sm font-bold text-zinc-100 hover:text-accent"
                   >
                     {position.symbol}
                     <ExternalLink className="h-3 w-3 text-slate-600" />
                   </a>
                   <Chip>{position.chain}</Chip>
                   {position.partialsTaken > 0 && (
-                    <Chip tone="indigo">{position.partialsTaken}× Teilgewinn</Chip>
+                    <Chip tone="accent">{position.partialsTaken}× Teilgewinn</Chip>
                   )}
                   {position.status === 'closing' && <Chip tone="amber">wird verkauft …</Chip>}
                 </div>
@@ -141,7 +141,7 @@ export function TradesTable({ trades }: { trades: Trade[] }) {
                   href={trade.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-semibold text-slate-200 hover:text-emerald-300"
+                  className="font-semibold text-zinc-200 hover:text-accent"
                 >
                   {trade.symbol}
                 </a>

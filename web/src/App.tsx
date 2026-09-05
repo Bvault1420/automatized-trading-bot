@@ -13,6 +13,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { Header } from './components/Header';
+import { InstallBanner, useInstallPrompt } from './components/InstallPrompt';
 import { EquityChart } from './components/EquityChart';
 import { MarketIntelPanel, NewsPanel } from './components/MarketIntel';
 import { CandidatesTable } from './components/Candidates';
@@ -36,6 +37,7 @@ interface Toast {
 
 export default function App() {
   const { state, connection, refresh } = useBotState();
+  const { install, dismiss, showBanner, canInstall, isIos } = useInstallPrompt();
   const [tab, setTab] = useState<Tab>('signals');
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -93,10 +95,10 @@ export default function App() {
 
   if (!state) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center px-4">
         <div className="flex flex-col items-center gap-3">
-          <Activity className="h-7 w-7 animate-pulse text-emerald-500" />
-          <p className="text-sm text-slate-500">
+          <Activity className="h-7 w-7 animate-pulse text-accent" />
+          <p className="text-center text-sm text-zinc-500">
             {connection === 'offline' ? 'Keine Verbindung zum Bot-Server …' : 'Dashboard wird geladen …'}
           </p>
         </div>
@@ -116,7 +118,7 @@ export default function App() {
   ];
 
   return (
-    <div className="min-h-screen pb-16">
+    <div className="min-h-[100dvh] safe-bottom pb-20 sm:pb-8">
       <Header
         status={status}
         wallet={wallet}
@@ -127,9 +129,17 @@ export default function App() {
         onStop={() => void action(api.stop)}
         onPanic={panic}
         onModeChange={setMode}
+        onInstall={() => void install()}
+        showInstall={canInstall}
       />
 
-      <main className="mx-auto max-w-[1600px] space-y-5 px-6 py-6">
+      {showBanner && (
+        <div className="pt-3">
+          <InstallBanner onInstall={() => void install()} onDismiss={dismiss} showIosHint={isIos} />
+        </div>
+      )}
+
+      <main className="mx-auto max-w-[1600px] space-y-4 px-3 py-4 sm:space-y-5 sm:px-5 sm:py-6">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
           <Stat
             label="Gesamtkapital"
@@ -219,16 +229,16 @@ export default function App() {
             </Card>
 
             <Card bodyClassName="p-0">
-              <nav className="flex items-center gap-1 border-b border-white/[0.06] px-3 py-2">
+              <nav className="scrollbar-hide flex items-center gap-1 overflow-x-auto border-b border-border px-2 py-2 sm:px-3">
                 {tabs.map(({ key, label, icon: Icon, count }) => (
                   <button
                     key={key}
                     type="button"
                     onClick={() => setTab(key)}
-                    className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
+                    className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:gap-2 sm:px-3.5 ${
                       tab === key
-                        ? 'bg-white/[0.08] text-slate-100'
-                        : 'text-slate-500 hover:bg-white/[0.03] hover:text-slate-300'
+                        ? 'bg-surface-3 text-zinc-100'
+                        : 'text-zinc-500 hover:bg-surface-2 hover:text-zinc-300'
                     }`}
                   >
                     <Icon className="h-3.5 w-3.5" />
@@ -240,7 +250,7 @@ export default function App() {
                     )}
                   </button>
                 ))}
-                <span className="ml-auto pr-2 text-[10px] text-slate-700">
+                <span className="hidden shrink-0 pr-2 text-[10px] text-zinc-600 sm:ml-auto sm:inline">
                   {status.lastScanAt ? `Scan ${timeAgo(status.lastScanAt)}` : ''}
                 </span>
               </nav>
@@ -270,10 +280,10 @@ export default function App() {
           </aside>
         </div>
 
-        <footer className="flex items-start gap-2.5 rounded-2xl border border-amber-500/15 bg-amber-500/[0.04] px-5 py-3.5">
+        <footer className="flex items-start gap-2.5 rounded-lg border border-border bg-surface-1 px-4 py-3 sm:px-5 sm:py-3.5">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-          <p className="text-[11px] leading-relaxed text-amber-200/70">
-            <span className="font-semibold text-amber-300">Risikohinweis.</span> Memecoin-Handel ist hochspekulativ.
+          <p className="text-[11px] leading-relaxed text-zinc-500">
+            <span className="font-medium text-zinc-400">Risiko.</span> Memecoin-Handel ist hochspekulativ.
             Kein Algorithmus kann Gewinne oder eine bestimmte Trefferquote garantieren – auch dieser nicht. Der Bot
             arbeitet mit Wahrscheinlichkeiten, und Totalverluste einzelner Positionen sind normaler Teil der
             Strategie. Setze ausschließlich Geld ein, dessen Verlust du verkraften kannst, und teste zuerst
@@ -282,14 +292,14 @@ export default function App() {
         </footer>
       </main>
 
-      <div className="pointer-events-none fixed bottom-5 right-5 z-50 flex flex-col gap-2">
+      <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-50 flex flex-col gap-2 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:bottom-5 sm:left-auto sm:right-5 sm:p-0">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`slide-in pointer-events-auto flex max-w-sm items-start gap-2.5 rounded-xl border px-4 py-3 text-xs font-medium shadow-2xl backdrop-blur-xl ${
+            className={`slide-in pointer-events-auto flex max-w-sm items-start gap-2.5 rounded-lg border px-4 py-3 text-xs font-medium shadow-lg ${
               toast.ok
-                ? 'border-emerald-500/25 bg-emerald-950/85 text-emerald-200'
-                : 'border-rose-500/25 bg-rose-950/85 text-rose-200'
+                ? 'border-positive/30 bg-surface-2 text-positive'
+                : 'border-negative/30 bg-surface-2 text-negative'
             }`}
           >
             {toast.ok ? (

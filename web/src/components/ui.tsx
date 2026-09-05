@@ -18,7 +18,7 @@ export function Card({
   return (
     <section className={`card flex flex-col overflow-hidden ${className}`}>
       {title && (
-        <header className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-3.5">
+        <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
           <h2 className="card-title">
             {icon}
             {title}
@@ -26,7 +26,7 @@ export function Card({
           {action}
         </header>
       )}
-      <div className={`flex-1 ${bodyClassName || 'p-5'}`}>{children}</div>
+      <div className={`flex-1 ${bodyClassName || 'p-4 sm:p-5'}`}>{children}</div>
     </section>
   );
 }
@@ -45,32 +45,32 @@ export function Stat({
   icon?: ReactNode;
 }) {
   const toneMap = {
-    neutral: 'text-slate-100',
-    good: 'text-emerald-400',
-    bad: 'text-rose-400',
-    accent: 'text-indigo-300',
+    neutral: 'text-zinc-100',
+    good: 'text-positive',
+    bad: 'text-negative',
+    accent: 'text-accent',
   } as const;
 
   return (
-    <div className="card px-4 py-3.5">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</span>
-        {icon && <span className="text-slate-600">{icon}</span>}
+    <div className="card px-3 py-3 sm:px-4 sm:py-3.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-medium text-zinc-500">{label}</span>
+        {icon && <span className="text-zinc-600">{icon}</span>}
       </div>
-      <div className={`num mt-1.5 text-2xl font-bold tracking-tight ${toneMap[tone]}`}>{value}</div>
-      {sub && <div className="mt-0.5 text-[11px] text-slate-500">{sub}</div>}
+      <div className={`num mt-1 text-xl font-semibold tracking-tight sm:text-2xl ${toneMap[tone]}`}>{value}</div>
+      {sub && <div className="mt-0.5 text-[11px] leading-snug text-zinc-500">{sub}</div>}
     </div>
   );
 }
 
-export function Bar({ value, tone = 'emerald' }: { value: number; tone?: 'emerald' | 'indigo' | 'amber' }) {
+export function Bar({ value, tone = 'accent' }: { value: number; tone?: 'accent' | 'positive' | 'amber' }) {
   const toneMap = {
-    emerald: 'bg-emerald-500',
-    indigo: 'bg-indigo-500',
+    accent: 'bg-accent',
+    positive: 'bg-positive',
     amber: 'bg-amber-500',
   } as const;
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+    <div className="h-1 w-full overflow-hidden rounded-full bg-surface-3">
       <div
         className={`h-full rounded-full transition-all duration-500 ${toneMap[tone]}`}
         style={{ width: `${Math.max(0, Math.min(100, value * 100))}%` }}
@@ -79,16 +79,15 @@ export function Bar({ value, tone = 'emerald' }: { value: number; tone?: 'emeral
   );
 }
 
-/** Zweiseitiger Balken fuer Werte von -1 bis +1 (Signalstaerke). */
 export function SignalBar({ score }: { score: number }) {
   const clamped = Math.max(-1, Math.min(1, score));
   const width = Math.abs(clamped) * 50;
   const positive = clamped >= 0;
   return (
-    <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
-      <div className="absolute left-1/2 top-0 h-full w-px bg-white/20" />
+    <div className="relative h-1 w-full overflow-hidden rounded-full bg-surface-3">
+      <div className="absolute left-1/2 top-0 h-full w-px bg-border" />
       <div
-        className={`absolute top-0 h-full transition-all duration-500 ${positive ? 'bg-emerald-500' : 'bg-rose-500'}`}
+        className={`absolute top-0 h-full transition-all duration-500 ${positive ? 'bg-positive' : 'bg-negative'}`}
         style={{ left: positive ? '50%' : `${50 - width}%`, width: `${width}%` }}
       />
     </div>
@@ -98,7 +97,7 @@ export function SignalBar({ score }: { score: number }) {
 export function Empty({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full min-h-32 flex-col items-center justify-center gap-1 py-10 text-center">
-      <p className="text-sm text-slate-500">{children}</p>
+      <p className="text-sm text-zinc-500">{children}</p>
     </div>
   );
 }
@@ -108,14 +107,14 @@ export function Chip({
   tone = 'slate',
 }: {
   children: ReactNode;
-  tone?: 'slate' | 'emerald' | 'rose' | 'amber' | 'indigo';
+  tone?: 'slate' | 'positive' | 'negative' | 'amber' | 'accent';
 }) {
   const toneMap = {
-    slate: 'border-white/10 bg-white/[0.04] text-slate-400',
-    emerald: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
-    rose: 'border-rose-500/25 bg-rose-500/10 text-rose-300',
-    amber: 'border-amber-500/25 bg-amber-500/10 text-amber-300',
-    indigo: 'border-indigo-500/25 bg-indigo-500/10 text-indigo-300',
+    slate: 'border-border bg-surface-2 text-zinc-400',
+    positive: 'border-positive/30 bg-positive/10 text-positive',
+    negative: 'border-negative/30 bg-negative/10 text-negative',
+    amber: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
+    accent: 'border-accent/30 bg-accent/10 text-accent',
   } as const;
   return <span className={`chip ${toneMap[tone]}`}>{children}</span>;
 }

@@ -78,6 +78,15 @@ sudo systemctl enable --now aletheia
 24/7-Host. Für echten Dauerbetrieb brauchst du einen VPS oder einen Rechner,
 den du nicht ausschaltest.
 
+### Handy & App installieren
+
+1. In `.env`: `BIND_HOST=0.0.0.0` (sonst erreicht das Handy den Server nicht)
+2. Am Handy im gleichen WLAN: `http://<rechner-ip>:8787` (Produktion) oder
+   `:5173` im Dev-Modus
+3. **Als App:** Chrome/Edge → „Installieren“ / „Zum Startbildschirm hinzufügen“.
+   iPhone (Safari): Teilen → „Zum Home-Bildschirm“. Die App läuft dann
+   ohne Browser-Leiste wie eine native Anwendung.
+
 ---
 
 ## Wie der Bot entscheidet

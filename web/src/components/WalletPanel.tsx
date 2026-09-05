@@ -316,7 +316,7 @@ export function WalletPanel({
       icon={<Wallet className="h-3.5 w-3.5" />}
       action={
         wallet.liveReady ? (
-          <Chip tone="emerald">bereit</Chip>
+          <Chip tone="positive">bereit</Chip>
         ) : (
           <Chip tone="amber">{remaining} Schritt{remaining === 1 ? '' : 'e'} offen</Chip>
         )
@@ -356,7 +356,7 @@ export function WalletPanel({
           <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
             Auszahlungsziel ({walletName})
           </span>
-          {wallet.ownerAddress && <Chip tone="emerald">verbunden</Chip>}
+          {wallet.ownerAddress && <Chip tone="positive">verbunden</Chip>}
         </div>
         {wallet.ownerAddress ? (
           <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2">
@@ -389,7 +389,7 @@ export function WalletPanel({
           <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Handelswallet</span>
           {wallet.hasKeystore &&
             (wallet.unlocked ? (
-              <Chip tone="emerald">
+              <Chip tone="positive">
                 <LockOpen className="h-3 w-3" />
                 entsperrt
               </Chip>

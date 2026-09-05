@@ -13,7 +13,7 @@ export function EquityChart({ data, startEquity }: { data: EquityPoint[]; startE
 
   const last = data[data.length - 1].equity;
   const up = last >= startEquity;
-  const color = up ? '#10b981' : '#f43f5e';
+  const color = up ? '#3ecf8e' : '#f87171';
   const values = data.map((d) => d.equity);
   const min = Math.min(...values, startEquity);
   const max = Math.max(...values, startEquity);

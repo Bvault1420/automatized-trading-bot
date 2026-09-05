@@ -5,9 +5,9 @@ import { ageLabel, compact, pct, price, toneClass, usd } from '../lib/format';
 import type { ScoredCandidate } from '../lib/types';
 
 function scoreTone(score: number, threshold: number): string {
-  if (score >= threshold) return 'text-emerald-400';
+  if (score >= threshold) return 'text-positive';
   if (score >= threshold - 10) return 'text-amber-400';
-  return 'text-slate-500';
+  return 'text-zinc-500';
 }
 
 function Breakdown({ item }: { item: ScoredCandidate }) {
@@ -25,7 +25,7 @@ function Breakdown({ item }: { item: ScoredCandidate }) {
             </div>
             <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/[0.06]">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-emerald-500 transition-all duration-500"
+                className="h-full rounded-full bg-accent transition-all duration-500"
                 style={{ width: `${part.value * 100}%` }}
               />
             </div>
@@ -38,7 +38,7 @@ function Breakdown({ item }: { item: ScoredCandidate }) {
         <div>
           <h4 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Sicherheitsprüfung</h4>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <Chip tone={item.security.score >= 0.7 ? 'emerald' : item.security.score >= 0.4 ? 'amber' : 'rose'}>
+            <Chip tone={item.security.score >= 0.7 ? 'positive' : item.security.score >= 0.4 ? 'amber' : 'negative'}>
               {item.security.score >= 0.7 ? (
                 <ShieldCheck className="h-3 w-3" />
               ) : (
@@ -49,7 +49,7 @@ function Breakdown({ item }: { item: ScoredCandidate }) {
             {item.security.sellTaxPct > 0 && (
               <Chip tone="amber">Verkaufssteuer {item.security.sellTaxPct.toFixed(1)}%</Chip>
             )}
-            {item.security.lpLocked && <Chip tone="emerald">LP gesperrt</Chip>}
+            {item.security.lpLocked && <Chip tone="positive">LP gesperrt</Chip>}
             {item.security.holderCount > 0 && <Chip>{compact(item.security.holderCount)} Halter</Chip>}
           </div>
           <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
@@ -91,7 +91,7 @@ function Breakdown({ item }: { item: ScoredCandidate }) {
           href={item.candidate.url}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-indigo-300 hover:text-indigo-200"
+          className="inline-flex items-center gap-1.5 text-[11px] font-medium text-accent hover:text-zinc-200"
         >
           Auf DexScreener ansehen <ExternalLink className="h-3 w-3" />
         </a>
@@ -119,7 +119,7 @@ export function CandidatesTable({
   return (
     <div className="divide-y divide-white/[0.04]">
       <div className="px-5 py-2 text-[10px] text-slate-500">
-        <span className="num font-semibold text-emerald-400">{ready}</span> kaufbereit ·{' '}
+        <span className="num font-semibold text-positive">{ready}</span> kaufbereit ·{' '}
         <span className="num text-slate-300">{clean}</span> ohne Hart-Filter ·{' '}
         <span className="num">{candidates.length}</span> bewertet
         {ready === 0 && ' · wartet auf ein Setup über dem Mindest-Score'}
@@ -150,7 +150,7 @@ export function CandidatesTable({
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-semibold text-slate-100">{c.symbol}</span>
                   {item.tradable ? (
-                    <Chip tone="emerald">handelbar</Chip>
+                    <Chip tone="positive">handelbar</Chip>
                   ) : (
                     <Chip tone="slate">gefiltert</Chip>
                   )}

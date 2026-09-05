@@ -1,4 +1,4 @@
-import { AlertOctagon, Loader2, Pause, Play, Zap } from 'lucide-react';
+import { AlertOctagon, Download, Loader2, Pause, Play } from 'lucide-react';
 import { Chip } from './ui';
 import type { BotStatus, TradingMode, WalletState } from '../lib/types';
 
@@ -12,6 +12,8 @@ export function Header({
   onStop,
   onPanic,
   onModeChange,
+  onInstall,
+  showInstall,
 }: {
   status: BotStatus;
   wallet: WalletState;
@@ -22,110 +24,117 @@ export function Header({
   onStop: () => void;
   onPanic: () => void;
   onModeChange: (mode: TradingMode) => void;
+  onInstall?: () => void;
+  showInstall?: boolean;
 }) {
   const isLive = status.mode === 'live';
 
   return (
-    <header className="sticky top-0 z-30 border-b border-white/[0.07] bg-ink-950/85 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-4 px-6 py-3.5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 shadow-lg shadow-emerald-500/20">
-            <Zap className="h-5 w-5 text-emerald-950" strokeWidth={2.5} />
+    <header className="sticky top-0 z-30 border-b border-border bg-surface-0/95 backdrop-blur-sm">
+      <div className="mx-auto flex max-w-[1600px] items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-5 sm:py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-2 text-sm font-bold text-zinc-100">
+            A
           </div>
-          <div>
-            <h1 className="text-[15px] font-bold leading-tight tracking-tight text-white">Aletheia</h1>
-            <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">
-              Läuft auf dem Server
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-semibold text-zinc-100 sm:text-[15px]">Aletheia</h1>
+            <p className="truncate text-[11px] text-zinc-500">
+              {status.running ? 'Bot aktiv' : 'Gestoppt'} · {wallet.chain}
             </p>
           </div>
         </div>
 
-        <div className="mx-1 hidden h-8 w-px bg-white/[0.07] sm:block" />
-
-        {/* Modusumschalter: der Live-Modus wird bewusst hervorgehoben. */}
-        <div className="flex items-center rounded-xl border border-white/10 bg-white/[0.03] p-0.5">
-          {(['paper', 'live'] as const).map((mode) => {
-            const active = status.mode === mode;
-            return (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => onModeChange(mode)}
-                disabled={busy}
-                title={
-                  mode === 'live' && !wallet.liveReady
-                    ? `Noch ${wallet.liveBlockers.length} Schritt(e): ${wallet.liveBlockers.join(' · ')}`
-                    : undefined
-                }
-                className={`rounded-[10px] px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-35 ${
-                  active
-                    ? mode === 'live'
-                      ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/25'
-                      : 'bg-slate-200 text-slate-900'
-                    : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                {mode === 'paper' ? 'Simulation' : 'Echtgeld'}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {status.running ? (
-            <Chip tone="emerald">
-              <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              Aktiv
-            </Chip>
-          ) : (
-            <Chip tone={status.haltReason ? 'amber' : 'slate'}>
-              <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
-              Gestoppt
-            </Chip>
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {showInstall && onInstall && (
+            <button
+              type="button"
+              className="btn-ghost px-2.5"
+              onClick={onInstall}
+              title="App installieren"
+              aria-label="App installieren"
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden md:inline">Installieren</span>
+            </button>
           )}
-          <Chip tone={connection === 'live' ? 'indigo' : 'rose'}>
-            {connection === 'live' ? 'Verbunden' : connection === 'connecting' ? 'Verbinde …' : 'Offline'}
-          </Chip>
-          {isLive && <Chip tone="rose">Echtes Geld · {wallet.chain}</Chip>}
-          {!isLive && <Chip tone="slate">{wallet.chain}</Chip>}
-        </div>
 
-        <div className="ml-auto flex items-center gap-2">
+          <div className="flex rounded-lg border border-border bg-surface-1 p-0.5">
+            {(['paper', 'live'] as const).map((mode) => {
+              const active = status.mode === mode;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => onModeChange(mode)}
+                  disabled={busy}
+                  className={`rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-35 sm:px-3 sm:text-xs ${
+                    active
+                      ? mode === 'live'
+                        ? 'bg-negative/20 text-negative'
+                        : 'bg-zinc-200 text-zinc-900'
+                      : 'text-zinc-500'
+                  }`}
+                >
+                  {mode === 'paper' ? 'Demo' : 'Live'}
+                </button>
+              );
+            })}
+          </div>
+
           {status.running ? (
-            <button type="button" className="btn-ghost" onClick={onStop} disabled={busy}>
+            <button type="button" className="btn-ghost px-2.5 sm:px-4" onClick={onStop} disabled={busy} aria-label="Stoppen">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}
-              Stoppen
+              <span className="hidden sm:inline">Stop</span>
             </button>
           ) : (
-            <button type="button" className="btn-primary" onClick={onStart} disabled={busy}>
+            <button type="button" className="btn-primary px-2.5 sm:px-4" onClick={onStart} disabled={busy} aria-label="Starten">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              Bot starten
+              <span className="hidden sm:inline">Start</span>
             </button>
           )}
-          <button type="button" className="btn-danger" onClick={onPanic} disabled={busy} title="Alles sofort verkaufen">
+
+          <button
+            type="button"
+            className="btn-danger px-2.5"
+            onClick={onPanic}
+            disabled={busy}
+            aria-label="Notaus"
+          >
             <AlertOctagon className="h-4 w-4" />
-            Notaus
           </button>
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-border px-3 py-1.5 sm:px-5">
+        {status.running ? (
+          <Chip tone="positive">
+            <span className="h-1.5 w-1.5 rounded-full bg-positive" />
+            Läuft
+          </Chip>
+        ) : (
+          <Chip tone={status.haltReason ? 'amber' : 'slate'}>
+            <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
+            Pause
+          </Chip>
+        )}
+        <Chip tone={connection === 'live' ? 'accent' : 'negative'}>
+          {connection === 'live' ? 'Online' : connection === 'connecting' ? 'Verbinde …' : 'Offline'}
+        </Chip>
+        {isLive && <Chip tone="negative">Echtgeld</Chip>}
+        {openPositions > 0 && <Chip>{openPositions} offen</Chip>}
+      </div>
+
       {status.running && (
-        <div className="border-t border-emerald-500/15 bg-emerald-500/[0.06] px-6 py-2 text-center text-xs font-medium text-emerald-200/85">
-          Der Bot handelt auf dem Server – Seite schließen, PC oder Handy aus ändert nichts.
-          Stoppen nur hier oder wenn der Rechner/VPS ausgeht.
+        <div className="border-t border-border bg-surface-2 px-3 py-2 text-center text-[11px] leading-relaxed text-zinc-400 sm:px-5 sm:text-xs">
+          Läuft auf dem Server – Handy oder PC aus ist egal, solange der Host an bleibt.
         </div>
       )}
 
       {!status.running && (status.haltReason || openPositions > 0) && (
-        <div className="border-t border-amber-500/20 bg-amber-500/[0.07] px-6 py-2 text-center text-xs font-medium text-amber-300">
+        <div className="border-t border-amber-500/20 bg-amber-500/5 px-3 py-2 text-center text-[11px] text-amber-300/90 sm:text-xs">
           {status.haltReason}
           {status.haltReason && openPositions > 0 && ' · '}
-          {openPositions > 0 && (
-            <span className="text-amber-200/80">
-              {openPositions} offene Position{openPositions === 1 ? '' : 'en'} – Stop-Loss und Notausstieg bleiben
-              aktiv
-            </span>
-          )}
+          {openPositions > 0 && `${openPositions} Position(en) – Stop-Loss bleibt aktiv`}
         </div>
       )}
     </header>

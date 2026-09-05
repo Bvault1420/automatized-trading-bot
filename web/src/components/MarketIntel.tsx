@@ -12,9 +12,9 @@ function RiskGauge({ value, regime }: { value: number; regime: Intel['regime'] }
 
   const tone =
     regime === 'risk-on'
-      ? { stroke: '#10b981', label: 'Risk-on', chip: 'emerald' as const }
+      ? { stroke: '#3ecf8e', label: 'Risk-on', chip: 'positive' as const }
       : regime === 'risk-off'
-        ? { stroke: '#f43f5e', label: 'Risk-off', chip: 'rose' as const }
+        ? { stroke: '#f87171', label: 'Risk-off', chip: 'negative' as const }
         : { stroke: '#f59e0b', label: 'Neutral', chip: 'amber' as const };
 
   return (
@@ -139,11 +139,11 @@ export function NewsPanel({ intel }: { intel: Intel }) {
       action={
         <div className="flex items-center gap-1.5">
           {intel.social.freshPosts > 0 && (
-            <Chip tone="emerald">{intel.social.freshPosts} Posts / {intel.social.freshWindowMinutes} Min.</Chip>
+            <Chip tone="positive">{intel.social.freshPosts} Posts / {intel.social.freshWindowMinutes} Min.</Chip>
           )}
           {intel.news.filteredOut ? <Chip tone="slate">{intel.news.filteredOut} Lärm raus</Chip> : null}
-          <Chip tone="emerald">{intel.news.bullishCount} bullisch</Chip>
-          <Chip tone="rose">{intel.news.bearishCount} bärisch</Chip>
+          <Chip tone="positive">{intel.news.bullishCount} bullisch</Chip>
+          <Chip tone="negative">{intel.news.bearishCount} bärisch</Chip>
         </div>
       }
       bodyClassName="p-0"
@@ -175,14 +175,14 @@ export function NewsPanel({ intel }: { intel: Intel }) {
           >
             <span
               className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                item.sentiment > 0.15 ? 'bg-emerald-400' : item.sentiment < -0.15 ? 'bg-rose-400' : 'bg-slate-600'
+                item.sentiment > 0.15 ? 'bg-positive' : item.sentiment < -0.15 ? 'bg-negative' : 'bg-zinc-600'
               }`}
             />
             <div className="min-w-0 flex-1">
               <p className="line-clamp-2 text-xs leading-relaxed text-slate-300">{item.title}</p>
               <p className="mt-0.5 text-[10px] text-slate-600">
                 {item.importanceTier === 'high' && (
-                  <span className="mr-1.5 font-semibold uppercase tracking-wider text-emerald-400/90">Wichtig</span>
+                  <span className="mr-1.5 font-medium text-positive">Wichtig</span>
                 )}
                 {item.source} · {timeAgo(item.publishedAt)}
                 {item.importanceWhy ? ` · ${item.importanceWhy}` : ''}
