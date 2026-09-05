@@ -48,14 +48,14 @@ export function hardRejections(c: TokenCandidate, security: SecurityReport, ctx:
   if (c.liquidityUsd < ctx.minLiquidityUsd) {
     reasons.push(`Liquidität zu gering ($${Math.round(c.liquidityUsd).toLocaleString('de-DE')})`);
   }
-  if (c.volume.h1 < 2_500) reasons.push('Zu wenig Handelsvolumen (1h)');
+  if (c.volume.h1 < 5_000) reasons.push('Zu wenig Handelsvolumen (1h, min. $5.000)');
 
   const txnsH1 = c.txns.h1.buys + c.txns.h1.sells;
-  if (txnsH1 < 15) reasons.push('Zu wenige Transaktionen (1h)');
+  if (txnsH1 < 30) reasons.push('Zu wenige Transaktionen (1h, min. 30 Txns)');
 
-  if (c.ageHours < 0.15) reasons.push('Paar extrem jung (< 9 Min.) – Hohes Rug-Risiko');
-  if (c.ageHours > 21 * 24 && c.volume.h1 < 25_000 && c.priceChange.h24 < 8) {
-    reasons.push('Altes, ausgereiztes Paar ohne frische Nachfrage');
+  if (c.ageHours < 0.5) reasons.push('Paar zu frisch (< 30 Min.) – Schutz vor Dev-Rugs/Snipers');
+  if (c.ageHours > 30 * 24 && c.volume.h1 < 25_000 && c.priceChange.h24 < 8) {
+    reasons.push('Altes, inaktives Paar ohne frische Nachfrage');
   }
 
   if (c.priceChange.m5 > 55) reasons.push('Parabolischer 5-Minuten-Anstieg – Einstieg zu spät');
@@ -147,8 +147,8 @@ function liquidityScore(c: TokenCandidate): { value: number; detail: string } {
 function ageScore(c: TokenCandidate): { value: number; detail: string } {
   const hours = c.ageHours;
   let value: number;
-  if (hours < 3) value = 0.32;
-  else if (hours < 72) value = 0.5 + 0.5 * bell(hours, 18, 22);
+  if (hours < 1) value = 0.25;
+  else if (hours < 72) value = 0.5 + 0.5 * bell(hours, 24, 28);
   else value = clamp(0.65 - (hours - 72) / 1800, 0.18, 0.65);
 
   const label = hours < 24 ? `${hours.toFixed(1)} Std.` : `${(hours / 24).toFixed(1)} Tage`;

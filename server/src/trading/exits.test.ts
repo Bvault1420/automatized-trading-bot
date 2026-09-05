@@ -69,6 +69,13 @@ function snap(partial: Partial<PairSnapshot> = {}): PairSnapshot {
 }
 
 describe('decideExit', () => {
+  it('greift beim absoluten Hard-Stop bei -20%', () => {
+    const hardStop = decideExit(position({ lastPrice: 0.78, pnlPct: -22 }), settings, snap());
+    assert.ok(hardStop);
+    assert.equal(hardStop.fraction, 1);
+    assert.match(hardStop.reason, /Maximalverlust|Hard-Exit/);
+  });
+
   it('schneidet Verlierer beim Stop-Loss und bei gebrochener These', () => {
     const sl = decideExit(position({ lastPrice: 0.88, pnlPct: -12 }), settings, snap());
     assert.ok(sl);

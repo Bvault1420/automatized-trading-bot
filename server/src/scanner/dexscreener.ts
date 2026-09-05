@@ -191,8 +191,8 @@ export async function discoverCandidates(
     const candidate = toCandidate(pair, boosts.get(boostKey) ?? 0);
     if (!candidate) continue;
     if (candidate.liquidityUsd < minLiquidityUsd) continue;
-    if (candidate.ageHours < 0.2) continue;
-    if (candidate.volume.h1 < 2_000) continue;
+    if (candidate.ageHours < 0.5) continue;
+    if (candidate.volume.h1 < 4_000) continue;
     if (candidate.priceChange.h24 < -45) continue;
     if (candidate.priceChange.m5 < -12) continue;
     if (candidate.priceChange.h1 < -22) continue;

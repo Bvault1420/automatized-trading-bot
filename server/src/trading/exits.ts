@@ -81,17 +81,22 @@ export function decideExit(
   const liqAtEntry = entryLiquidity(position, costs);
   const volAtEntry = entryVolume(position, costs);
 
+  // --- Absoluter Hard-Stop-Loss: Bei -20% (oder tiefer) bedingungsloser Sofortausstieg ---
+  if (pnlPct <= -20) {
+    return { fraction: 1, reason: `Maximalverlust erreicht (${pnlPct.toFixed(1)}%) – Hard-Exit`, urgent: true };
+  }
+
   // --- Notfall: Liquidität, Volumen, News, Makro ---
-  if (snapshot && snapshot.liquidityUsd > 0 && snapshot.liquidityUsd < settings.minLiquidityUsd * 0.68) {
+  if (snapshot && snapshot.liquidityUsd > 0 && snapshot.liquidityUsd < settings.minLiquidityUsd * 0.75) {
     return { fraction: 1, reason: 'Liquidität eingebrochen – Sofort-Verkauf', urgent: true };
   }
 
   if (snapshot && liqAtEntry > 0 && snapshot.liquidityUsd > 0) {
     const liqDropPct = ((liqAtEntry - snapshot.liquidityUsd) / liqAtEntry) * 100;
-    if (liqDropPct >= 22) {
+    if (liqDropPct >= 18) {
       return {
         fraction: 1,
-        reason: `Pool-Liquidität −${liqDropPct.toFixed(0)}% seit Einstieg`,
+        reason: `Pool-Liquidität −${liqDropPct.toFixed(0)}% seit Einstieg – Notausstieg`,
         urgent: true,
       };
     }
