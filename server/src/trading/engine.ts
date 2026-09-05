@@ -435,6 +435,9 @@ class Engine {
     });
     if (candidates.length === 0) return;
 
+    const tradableCandidates = candidates.filter((c) => c.tradable);
+    const tradableCount = tradableCandidates.length;
+
     let lastBlock = '';
     for (const candidate of candidates) {
       const verdict = checkCandidate(candidate, ctx);
@@ -443,7 +446,7 @@ class Engine {
         continue;
       }
 
-      const size = positionSizeUsd(candidate, ctx);
+      const size = positionSizeUsd(candidate, ctx, tradableCount);
       if (size <= 0) {
         lastBlock = `${candidate.candidate.symbol}: Positionsgröße unter Minimum`;
         continue;
