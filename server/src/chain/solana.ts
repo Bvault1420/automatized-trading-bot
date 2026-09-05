@@ -188,6 +188,23 @@ export async function tokenAmountForMint(owner: PublicKey, mint: string): Promis
   return matches.reduce((best, row) => (row.amount > best.amount ? row : best));
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** RPC kann nach Kauf/ATA-Erstellung kurz hinterherhinken – mehrfach versuchen. */
+export async function tokenAmountForMintWithRetry(
+  owner: PublicKey,
+  mint: string,
+  attempts = 4,
+  delayMs = 350,
+): Promise<SplBalance | null> {
+  for (let i = 0; i < attempts; i++) {
+    const held = await tokenAmountForMint(owner, mint);
+    if (held && held.amount > 0n) return held;
+    if (i < attempts - 1) await sleep(delayMs * (i + 1));
+  }
+  return null;
+}
+
 export async function buildSolTransfer(from: PublicKey, to: PublicKey, lamports: bigint): Promise<Transaction> {
   const latest = await solanaConnection().getLatestBlockhash('confirmed');
   const tx = new Transaction({

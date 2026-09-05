@@ -12,9 +12,10 @@ import {
   GAS_RESERVE_SOL,
   WSOL_MINT,
   isSolanaChain,
-  tokenAmountForMint,
+  tokenAmountForMintWithRetry,
   closeEmptyTokenAccounts,
 } from '../../chain/solana.js';
+import { portfolio } from '../portfolio.js';
 import { solanaWallet } from '../../chain/solanaWallet.js';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import type { Position, TokenCandidate } from '../../types.js';
@@ -61,13 +62,18 @@ export class LiveExecutor implements Executor {
       : { nativeBalance: 0, tokenUsd: 0, totalUsd: 0, nativeBalanceUsd: 0 };
 
     const reserve = gasReserve();
-    if (snap.nativeBalance <= reserve && snap.tokenUsd < 1) {
+    const openExposure = portfolio
+      .openPositions('live')
+      .reduce((sum, p) => sum + p.tokenAmount * p.lastPrice, 0);
+    const hasTradeableValue = snap.tokenUsd >= 1 || openExposure >= 0.45;
+
+    if (snap.nativeBalance <= reserve && !hasTradeableValue) {
       reasons.push(
         isSolanaChain()
           ? `Noch kein Guthaben: sende SOL oder USDC auf Solana an das Bot-Wallet`
           : `Noch kein Guthaben: sende ETH, USDC oder cbBTC auf ${config.chain.name} an das Bot-Wallet`,
       );
-    } else if (snap.nativeBalance <= reserve && snap.tokenUsd >= 1) {
+    } else if (snap.nativeBalance <= reserve && hasTradeableValue) {
       reasons.push(
         `${snap.tokenUsd.toFixed(2)} $ in Tokens erkannt, aber es fehlt etwas ${native} als Gebühr für die Umwandlung`,
       );
@@ -189,7 +195,7 @@ export class LiveExecutor implements Executor {
 
   private async sellSolana(position: Position, fraction: number, maxSlippagePct: number): Promise<SellResult> {
     const owner = solanaWallet.requireKeypair().publicKey;
-    const held = await tokenAmountForMint(owner, position.tokenAddress);
+    const held = await tokenAmountForMintWithRetry(owner, position.tokenAddress);
     if (!held || held.amount <= 0n) return failSell('Kein Token-Guthaben zum Verkaufen');
 
     const sellRaw =

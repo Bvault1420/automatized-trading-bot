@@ -13,6 +13,7 @@ import { confirmLiveTape } from './entry.js';
 import { decideExit } from './exits.js';
 import { decoratePosition, estimateRoundTripCostUsd, isMicroAccount, isRecoveryAccount, roundTripAllowsEntry } from './fees.js';
 import { lossCooldownMs, rememberTrade } from './learning.js';
+import { reconcileGhostPosition, reconcileOpenPositions } from './reconcile.js';
 import { PaperExecutor } from './executor/paper.js';
 import { LiveExecutor } from './executor/live.js';
 import { hotWallet } from '../chain/hot.js';
@@ -41,6 +42,7 @@ class Engine {
   private selling = new Set<string>();
   private lastAtaReclaimAt = 0;
   private lastRiskBlockLogAt = 0;
+  private lastReconcileAt = 0;
 
   get settings(): BotSettings {
     return db.data.settings;
@@ -131,6 +133,11 @@ class Engine {
     log.success(
       `${resumed ? 'Handel nach Neustart fortgesetzt' : 'Bot gestartet'} im ${this.mode === 'live' ? 'LIVE' : 'PAPER'}-Modus`,
     );
+    if (this.mode === 'live') {
+      void reconcileOpenPositions('live').then((closed) => {
+        if (closed > 0) log.warn(`${closed} Geister-Position(en) beim Start bereinigt`);
+      });
+    }
     this.emitStatus();
     void this.tickSafe();
     return { ok: true, message: `Bot gestartet (${this.mode})` };
@@ -285,6 +292,16 @@ class Engine {
 
     await this.updatePositions();
 
+    if (this.mode === 'live' && hotWallet.unlocked && Date.now() - this.lastReconcileAt > 30_000) {
+      this.lastReconcileAt = Date.now();
+      try {
+        const closed = await reconcileOpenPositions('live');
+        if (closed > 0) log.warn(`${closed} Geister-Position(en) mit On-Chain-Abgleich bereinigt`);
+      } catch (err) {
+        log.warn(`Positions-Abgleich fehlgeschlagen: ${(err as Error).message}`);
+      }
+    }
+
     if (this.mode === 'live' && Date.now() - this.lastAtaReclaimAt > 5 * 60_000) {
       this.lastAtaReclaimAt = Date.now();
       try {
@@ -368,6 +385,14 @@ class Engine {
     try {
       const result = await this.executor.sell(position, fraction, this.settings.maxSlippagePct);
       if (!result.ok) {
+        if (result.error === 'Kein Token-Guthaben zum Verkaufen' && this.mode === 'live') {
+          const reconciled = await reconcileGhostPosition(position);
+          if (reconciled.closed) {
+            const marks = await this.liveMarks();
+            portfolio.markEquity(this.mode, this.mode === 'live' ? marks.availableUsd : 0, marks.extras);
+            return true;
+          }
+        }
         log.error(`Verkauf ${position.symbol} fehlgeschlagen: ${result.error}`);
         portfolio.unmarkClosing(position.id);
         return false;
