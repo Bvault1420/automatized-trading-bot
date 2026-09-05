@@ -13,7 +13,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { Header } from './components/Header';
-import { InstallBanner, useInstallPrompt } from './components/InstallPrompt';
+import { InstallBanner, InstallModal, useInstallPrompt } from './components/InstallPrompt';
 import { EquityChart } from './components/EquityChart';
 import { MarketIntelPanel, NewsPanel } from './components/MarketIntel';
 import { CandidatesTable } from './components/Candidates';
@@ -37,7 +37,8 @@ interface Toast {
 
 export default function App() {
   const { state, connection, refresh } = useBotState();
-  const { install, dismiss, showBanner, canInstall, isIos } = useInstallPrompt();
+  const { install, dismiss, showBanner, canInstall, isIos, isAndroid, hasNativePrompt, modalOpen, closeModal } =
+    useInstallPrompt();
   const [tab, setTab] = useState<Tab>('signals');
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -63,21 +64,6 @@ export default function App() {
     },
     [notify, refresh],
   );
-
-  const resume = useCallback(() => {
-    if (
-      state?.status.haltReason &&
-      !window.confirm('Notaus/Halt aufheben und Bot wieder starten? Neue Einstiege werden dann wieder ausgeführt.')
-    ) {
-      return;
-    }
-    void action(api.resume);
-  }, [action, state?.status.haltReason]);
-
-  const panic = useCallback(() => {
-    if (!window.confirm('Notaus: Bot stoppen und alle Positionen sofort verkaufen?')) return;
-    void action(api.panic);
-  }, [action]);
 
   const setMode = useCallback(
     (mode: TradingMode) => {
@@ -136,11 +122,18 @@ export default function App() {
         openPositions={positions.length}
         onStart={() => void action(api.start)}
         onStop={() => void action(api.stop)}
-        onResume={resume}
-        onPanic={panic}
         onModeChange={setMode}
         onInstall={() => void install()}
         showInstall={canInstall}
+      />
+
+      <InstallModal
+        open={modalOpen}
+        onClose={closeModal}
+        onInstall={install}
+        isIos={isIos}
+        isAndroid={isAndroid}
+        hasNativePrompt={hasNativePrompt}
       />
 
       {showBanner && (

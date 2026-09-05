@@ -17,8 +17,6 @@ export interface RiskContext {
 export interface RiskVerdict {
   allowed: boolean;
   reason: string;
-  /** Wird gesetzt, wenn der Bot komplett pausieren soll. */
-  halt?: string;
 }
 
 const MIN_TRADE_USD = 1;
@@ -32,16 +30,14 @@ export function checkGlobalRisk(ctx: RiskContext): RiskVerdict {
   if (!recovery && state.dayPnlPct <= -Math.abs(settings.dailyLossLimitPct)) {
     return {
       allowed: false,
-      reason: `Tagesverlustlimit erreicht (${state.dayPnlPct.toFixed(1)}%)`,
-      halt: `Tagesverlustlimit von ${settings.dailyLossLimitPct}% erreicht – Handel bis morgen pausiert`,
+      reason: `Tagesverlustlimit erreicht (${state.dayPnlPct.toFixed(1)}%) – heute keine neuen Einstiege`,
     };
   }
 
   if (!recovery && state.drawdownPct >= Math.abs(settings.maxDrawdownPct)) {
     return {
       allowed: false,
-      reason: `Maximaler Drawdown erreicht (${state.drawdownPct.toFixed(1)}%)`,
-      halt: `Drawdown-Limit von ${settings.maxDrawdownPct}% erreicht – Notaus ausgelöst`,
+      reason: `Drawdown-Limit erreicht (${state.drawdownPct.toFixed(1)}%) – keine neuen Einstiege`,
     };
   }
 

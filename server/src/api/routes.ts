@@ -58,14 +58,6 @@ router.post('/bot/stop', (_req, res) => {
   res.json({ ok: true, message: 'Bot gestoppt' });
 });
 
-router.post('/bot/resume', async (_req, res) => {
-  res.json(await engine.resume());
-});
-
-router.post('/bot/panic', async (_req, res) => {
-  res.json(await engine.panic());
-});
-
 router.post('/bot/mode', async (req, res) => {
   const mode = req.body?.mode as TradingMode;
   if (mode !== 'paper' && mode !== 'live') return res.status(400).json(fail('Ungültiger Modus'));

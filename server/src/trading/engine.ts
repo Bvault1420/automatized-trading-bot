@@ -137,7 +137,7 @@ class Engine {
 
   /**
    * Stoppt ausschliesslich neue Einstiege. Offene Positionen bleiben durch
-   * Stop-Loss, Trailing-Stop und Notausstieg weiter geschuetzt.
+   * Stop-Loss, Trailing-Stop und Liquiditäts-Notfall bleiben geschuetzt.
    */
   stop(reason = 'Manuell gestoppt'): void {
     db.update((draft) => {
@@ -157,17 +157,6 @@ class Engine {
         : `Bot gestoppt: ${reason}`,
     );
     this.emitStatus();
-  }
-
-  /** Notaus / Risiko-Halt aufheben und Handel wieder starten. */
-  async resume(): Promise<{ ok: boolean; message: string }> {
-    const prev = this.haltReason;
-    const result = await this.start(true);
-    if (!result.ok) return result;
-    if (prev) {
-      return { ok: true, message: `Halt aufgehoben – Bot läuft wieder (${prev})` };
-    }
-    return result;
   }
 
   async setMode(mode: TradingMode): Promise<{ ok: boolean; message: string }> {
@@ -308,7 +297,7 @@ class Engine {
 
     // Risikomanagement laeuft immer. "Gestoppt" bedeutet ausdruecklich nur
     // "keine neuen Einstiege" – offene Positionen behalten ihren Stop-Loss,
-    // ihren Trailing-Stop und den Notausstieg bei Liquiditaetseinbruch. Alles
+    // ihren Trailing-Stop und den Liquiditäts-Notfall bei Liquiditaetseinbruch. Alles
     // andere wuerde bestehendes Kapital genau dann ungeschuetzt lassen, wenn
     // es am gefaehrlichsten ist.
     if (this.canExit()) await this.manageExits(ctx);
@@ -431,13 +420,7 @@ class Engine {
 
   private async considerEntries(ctx: RiskContext): Promise<void> {
     const global = checkGlobalRisk(ctx);
-    if (!global.allowed) {
-      if (global.halt) {
-        this.stop(global.halt);
-        await this.closeAll('Risikolimit erreicht');
-      }
-      return;
-    }
+    if (!global.allowed) return;
 
     const candidates = [...getCandidates()].sort((a, b) => {
       if (a.tradable !== b.tradable) return a.tradable ? -1 : 1;
@@ -566,13 +549,6 @@ class Engine {
     if (position.status === 'closed') return { ok: false, message: 'Position ist bereits geschlossen' };
     const ok = await this.executeSell(position, 1, reason);
     return { ok, message: ok ? `${position.symbol} geschlossen` : 'Verkauf fehlgeschlagen' };
-  }
-
-  /** Sofortiger Notaus: Bot stoppen und alles verkaufen. */
-  async panic(): Promise<{ ok: boolean; message: string }> {
-    this.stop('Notaus ausgelöst');
-    const closed = await this.closeAll('Notaus – alle Positionen geschlossen');
-    return { ok: true, message: `Notaus ausgeführt, ${closed} Position(en) geschlossen` };
   }
 }
 

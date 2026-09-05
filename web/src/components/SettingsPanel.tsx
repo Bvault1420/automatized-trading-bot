@@ -78,7 +78,7 @@ const FIELDS: Field[] = [
   {
     key: 'maxDrawdownPct',
     label: 'Maximaler Drawdown',
-    hint: 'Notaus bei diesem Rückgang vom Höchststand',
+    hint: 'Ab diesem Drawdown werden keine neuen Einstiege mehr gemacht',
     min: 10, max: 90, step: 1, unit: '%',
   },
 ];

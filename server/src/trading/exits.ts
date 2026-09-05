@@ -83,7 +83,7 @@ export function decideExit(
 
   // --- Notfall: Liquidität, Volumen, News, Makro ---
   if (snapshot && snapshot.liquidityUsd > 0 && snapshot.liquidityUsd < settings.minLiquidityUsd * 0.68) {
-    return { fraction: 1, reason: 'Liquidität eingebrochen – Notausstieg', urgent: true };
+    return { fraction: 1, reason: 'Liquidität eingebrochen – Sofort-Verkauf', urgent: true };
   }
 
   if (snapshot && liqAtEntry > 0 && snapshot.liquidityUsd > 0) {
