@@ -131,6 +131,17 @@ export const portfolio = {
         b.dayStartedAt = Date.now();
       }
 
+      // Einzahlung oder veralteter Peak (z. B. nach Wallet-Sync): Drawdown-Basis zurücksetzen.
+      const lastPoint = [...draft.equityCurve].reverse().find((p) => p.mode === mode);
+      const depositJump = lastPoint && state.equityUsd > lastPoint.equity * 1.3;
+      const stalePeak =
+        b.peakEquityUsd > state.equityUsd * 1.15 && state.equityUsd >= state.startEquityUsd * 0.75;
+      if (depositJump || stalePeak) {
+        b.peakEquityUsd = state.equityUsd;
+        b.dayStartEquityUsd = state.equityUsd;
+        b.dayStartedAt = Date.now();
+      }
+
       if (state.equityUsd > b.peakEquityUsd) b.peakEquityUsd = state.equityUsd;
 
       if (Date.now() - b.dayStartedAt > 24 * 3_600_000) {

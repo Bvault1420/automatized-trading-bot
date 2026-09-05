@@ -40,6 +40,7 @@ class Engine {
   /** Positionen die gerade verkauft werden – verhindert doppelte Orders. */
   private selling = new Set<string>();
   private lastAtaReclaimAt = 0;
+  private lastRiskBlockLogAt = 0;
 
   get settings(): BotSettings {
     return db.data.settings;
@@ -420,7 +421,13 @@ class Engine {
 
   private async considerEntries(ctx: RiskContext): Promise<void> {
     const global = checkGlobalRisk(ctx);
-    if (!global.allowed) return;
+    if (!global.allowed) {
+      if (Date.now() - this.lastRiskBlockLogAt > 60_000) {
+        log.info(`Keine neuen Einstiege – ${global.reason}`);
+        this.lastRiskBlockLogAt = Date.now();
+      }
+      return;
+    }
 
     const candidates = [...getCandidates()].sort((a, b) => {
       if (a.tradable !== b.tradable) return a.tradable ? -1 : 1;
