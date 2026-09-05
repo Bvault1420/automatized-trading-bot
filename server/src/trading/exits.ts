@@ -196,8 +196,8 @@ export function decideExit(
     };
   }
 
-  // Für Micro-Konten: Ein früher Teilprofit wenn +12% erreicht und Netto positiv
-  if (micro && pnlPct >= 12 && net.netPct >= 4) {
+  // Für Micro-Konten: Schneller Gewinnmitnahme bei +8% – kleine Konten können sich kein Zurückgeben leisten
+  if (micro && pnlPct >= 8 && net.netPct >= 3) {
     return {
       fraction: 1,
       reason: `Quick-Profit bei +${pnlPct.toFixed(1)}% (netto +${net.netPct.toFixed(1)}%)`,

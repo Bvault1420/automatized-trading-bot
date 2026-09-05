@@ -17,7 +17,7 @@ import type { TokenCandidate } from '../types.js';
 const log = createLogger('heal');
 const STABLE_MINTS = new Set([USDC_MINT, USDT_MINT]);
 let lastFullHealAt = 0;
-const FULL_HEAL_MS = 12_000;
+const FULL_HEAL_MS = 45_000;
 
 export interface HealReport {
   unstuck: number;

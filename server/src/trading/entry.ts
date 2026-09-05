@@ -68,10 +68,12 @@ export function effectiveMinScore(
   intel: MarketIntel,
   recentTrades: Trade[],
   consecutiveLosses: number,
+  recovery = false,
 ): number {
   let min = settings.minEntryScore;
   if (intel.regime === 'risk-off') min += 2;
-  if (consecutiveLosses >= 3) min += 3;
+  // Recovery-Konto: keine zusätzliche Strafe nach Verlustserie – Kapital muss wieder aufgebaut werden
+  if (!recovery && consecutiveLosses >= 3) min += 3;
   return clamp(min, 0, 88);
 }
 

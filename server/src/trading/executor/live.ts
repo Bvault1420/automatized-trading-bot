@@ -9,12 +9,12 @@ import { routeSwap } from './router.js';
 import { executeSwap } from './jupiter.js';
 import { readDeposits, sweepToNative } from '../../chain/deposits.js';
 import {
-  GAS_RESERVE_SOL,
   WSOL_MINT,
   isSolanaChain,
   tokenAmountForMintWithRetry,
   closeEmptyTokenAccounts,
 } from '../../chain/solana.js';
+import { gasReserveSol } from '../fees.js';
 import { portfolio } from '../portfolio.js';
 import { solanaWallet } from '../../chain/solanaWallet.js';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
@@ -26,8 +26,9 @@ const log = createLogger('live');
 /** Native-Reserve, damit immer genug fuer Gas (auch fuer den Exit) bleibt. */
 export const GAS_RESERVE_ETH = 0.00025;
 
-export function gasReserve(): number {
-  return isSolanaChain() ? GAS_RESERVE_SOL : GAS_RESERVE_ETH;
+export function gasReserve(totalUsd = 0, nativeBalanceSol?: number): number {
+  if (isSolanaChain()) return gasReserveSol(totalUsd, nativeBalanceSol);
+  return GAS_RESERVE_ETH;
 }
 
 function failBuy(error: string): BuyResult {
@@ -61,11 +62,15 @@ export class LiveExecutor implements Executor {
       ? await readDeposits()
       : { nativeBalance: 0, tokenUsd: 0, totalUsd: 0, nativeBalanceUsd: 0 };
 
-    const reserve = gasReserve();
+    const reserve = gasReserve(snap.totalUsd, snap.nativeBalance);
     const openExposure = portfolio
       .openPositions('live')
       .reduce((sum, p) => sum + p.tokenAmount * p.lastPrice, 0);
-    const hasTradeableValue = snap.tokenUsd >= 1 || openExposure >= 0.45;
+    const hasTradeableValue =
+      snap.tokenUsd >= 0.18 ||
+      openExposure >= 0.18 ||
+      snap.totalUsd >= 0.18 ||
+      snap.nativeBalance >= 0.0012;
 
     if (snap.nativeBalance <= reserve && !hasTradeableValue) {
       reasons.push(
@@ -90,8 +95,9 @@ export class LiveExecutor implements Executor {
       }
     }
     const snap = await readDeposits();
-    const reservedUsd = Math.min(snap.nativeBalance, gasReserve()) * snap.nativePriceUsd;
-    const availableUsd = Math.max(0, snap.nativeBalance - gasReserve()) * snap.nativePriceUsd + snap.tokenUsd;
+    const reserve = gasReserve(snap.totalUsd, snap.nativeBalance);
+    const reservedUsd = Math.min(snap.nativeBalance, reserve) * snap.nativePriceUsd;
+    const availableUsd = Math.max(0, snap.nativeBalance - reserve) * snap.nativePriceUsd + snap.tokenUsd;
     return {
       availableUsd,
       walletUsd: snap.totalUsd,
@@ -160,7 +166,8 @@ export class LiveExecutor implements Executor {
 
     const sellSol = amountUsd / solPrice;
     const balance = await solanaWallet.nativeBalance();
-    if (balance - GAS_RESERVE_SOL < sellSol) return failBuy('Guthaben im Bot-Wallet reicht nicht');
+    const reserve = gasReserve(amountUsd, balance);
+    if (balance - reserve < sellSol) return failBuy('Guthaben im Bot-Wallet reicht nicht');
 
     const lamports = BigInt(Math.floor(sellSol * LAMPORTS_PER_SOL));
     if (lamports <= 0n) return failBuy('Betrag zu klein für einen Swap');

@@ -128,6 +128,11 @@ class Engine {
     this.running = true;
     this.haltReason = null;
     this.startedAt = Date.now();
+    if (!resumed) {
+      // Manueller Start: Verlust-Pause zurücksetzen, sofort wieder handeln.
+      this.cooldownUntil = null;
+      this.sellFailCounts.clear();
+    }
     db.update((draft) => {
       draft.runtime.shouldRun = true;
     });
@@ -135,9 +140,13 @@ class Engine {
       `${resumed ? 'Handel nach Neustart fortgesetzt' : 'Bot gestartet'} im ${this.mode === 'live' ? 'LIVE' : 'PAPER'}-Modus`,
     );
     if (this.mode === 'live') {
-      void reconcileOpenPositions('live').then((closed) => {
-        if (closed > 0) log.warn(`${closed} Geister-Position(en) beim Start bereinigt`);
-      });
+      try {
+        await healLiveTrading();
+      } catch (err) {
+        log.warn(`Start-Reparatur fehlgeschlagen: ${(err as Error).message}`);
+      }
+      const closed = await reconcileOpenPositions('live');
+      if (closed > 0) log.warn(`${closed} Geister-Position(en) beim Start bereinigt`);
     }
     this.emitStatus();
     void this.tickSafe();

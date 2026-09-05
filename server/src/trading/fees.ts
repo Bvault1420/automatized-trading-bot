@@ -9,13 +9,17 @@ export const RECOVERY_EQUITY_USD = 2.5;
 
 export const MIN_TRADE_USD = 1;
 export const MIN_TRADE_RECOVERY_USD = 0.55;
+/** Unter $0.50 Equity: letztes Restkapital noch einsetzen. */
+export const MIN_TRADE_DUST_USD = 0.18;
+export const DUST_EQUITY_USD = 0.5;
 
 /**
  * SOL, die für einen Jupiter-Verkauf liegen bleiben müssen.
  * Kleiner als früher (0.008), reicht für eine Exit-Tx inkl. Priority-Fee.
  * Liegt weiter im Wallet – das ist kein Portfolioverlust.
  */
-export const GAS_RESERVE_SOL_MICRO = 0.004;
+export const GAS_RESERVE_SOL_MICRO = 0.0025;
+export const GAS_RESERVE_SOL_DUST = 0.00055;
 
 /** Typische Priority+Base-Fee einer Jupiter-Tx (nicht das Maximum). */
 export const SOL_TX_COST_SOL = 0.0012;
@@ -35,8 +39,27 @@ export function isRecoveryAccount(equityUsd: number, startEquityUsd: number): bo
   return equityUsd > 0 && equityUsd <= RECOVERY_EQUITY_USD && startEquityUsd > equityUsd * 1.3;
 }
 
+export function isDustAccount(equityUsd: number): boolean {
+  return equityUsd > 0 && equityUsd < DUST_EQUITY_USD;
+}
+
 export function minTradeUsd(equityUsd: number, startEquityUsd: number): number {
-  return isRecoveryAccount(equityUsd, startEquityUsd) ? MIN_TRADE_RECOVERY_USD : MIN_TRADE_USD;
+  if (isDustAccount(equityUsd)) return MIN_TRADE_DUST_USD;
+  if (isRecoveryAccount(equityUsd, startEquityUsd)) return MIN_TRADE_RECOVERY_USD;
+  return MIN_TRADE_USD;
+}
+
+/** Dynamische Gas-Reserve: bei Dust-Konten nur Tx-Kosten zurückhalten. */
+export function gasReserveSol(totalUsd: number, nativeBalanceSol?: number): number {
+  if (totalUsd > 0 && totalUsd < DUST_EQUITY_USD) {
+    const floor = SOL_TX_COST_SOL_MICRO;
+    if (nativeBalanceSol !== undefined && nativeBalanceSol > 0) {
+      return Math.min(GAS_RESERVE_SOL_DUST, Math.max(floor, nativeBalanceSol * 0.12));
+    }
+    return GAS_RESERVE_SOL_DUST;
+  }
+  if (totalUsd > 0 && totalUsd <= MICRO_EQUITY_USD) return GAS_RESERVE_SOL_MICRO;
+  return 0.004;
 }
 
 export interface SwapCostInput {

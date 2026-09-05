@@ -1,6 +1,6 @@
 import { clamp } from '../util/num.js';
 import { effectiveMinScore, marketEntryBlocked } from './entry.js';
-import { isMicroAccount, isRecoveryAccount, minTradeUsd } from './fees.js';
+import { isMicroAccount, isRecoveryAccount, isDustAccount, minTradeUsd } from './fees.js';
 import { portfolio } from './portfolio.js';
 import type { BotSettings, MarketIntel, PortfolioState, ScoredCandidate } from '../types.js';
 
@@ -90,6 +90,7 @@ export function checkCandidate(candidate: ScoredCandidate, ctx: RiskContext): Ri
     ctx.intel,
     portfolio.trades(ctx.settings.tradingMode),
     ctx.consecutiveLosses,
+    isRecoveryAccount(ctx.state.equityUsd, ctx.state.startEquityUsd),
   );
 
   if (candidate.score < minScore) {
@@ -99,10 +100,10 @@ export function checkCandidate(candidate: ScoredCandidate, ctx: RiskContext): Ri
     };
   }
 
-  if (candidate.rawScore < 52) {
+  if (candidate.rawScore < 55) {
     return {
       allowed: false,
-      reason: `Setup-Qualität zu schwach (raw ${candidate.rawScore.toFixed(1)} < 52)`,
+      reason: `Setup-Qualität zu schwach (raw ${candidate.rawScore.toFixed(1)} < 55)`,
     };
   }
 
@@ -144,9 +145,11 @@ export function positionSizeUsd(
   const recovery = isRecoveryAccount(state.equityUsd, state.startEquityUsd);
   const minTrade = minTradeUsd(state.equityUsd, state.startEquityUsd);
 
-  // Recovery-Konto (< $2.50): Fokus auf Mindest-Tickets zum Wiederaufbau
-  if (recovery) {
-    const size = Math.min(ctx.availableCashUsd * 0.94, state.equityUsd * 0.9, liquidityCap);
+  // Recovery- und Dust-Konto: fast alles einsetzen, um schnell wieder hochzukommen
+  if (recovery || isDustAccount(state.equityUsd)) {
+    const cashFraction = isDustAccount(state.equityUsd) ? 0.98 : 0.96;
+    const equityFraction = isDustAccount(state.equityUsd) ? 0.96 : 0.92;
+    const size = Math.min(ctx.availableCashUsd * cashFraction, state.equityUsd * equityFraction, liquidityCap);
     return size >= minTrade ? Number(size.toFixed(4)) : 0;
   }
 
