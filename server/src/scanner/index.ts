@@ -70,9 +70,9 @@ export async function runScan(options: ScanOptions): Promise<ScoredCandidate[]> 
     .sort((a, b) => b.pre.rawScore - a.pre.rawScore);
   const showcase = [...cheap].sort((a, b) => b.pre.rawScore - a.pre.rawScore);
   const picked = new Map<string, (typeof cheap)[number]>();
-  for (const row of [...viable.slice(0, 32), ...showcase.slice(0, 14)]) {
+  for (const row of [...viable.slice(0, 36), ...showcase.slice(0, 16)]) {
     picked.set(row.candidate.id, row);
-    if (picked.size >= 42) break;
+    if (picked.size >= 48) break;
   }
   const preRanked = [...picked.values()];
 
@@ -81,7 +81,7 @@ export async function runScan(options: ScanOptions): Promise<ScoredCandidate[]> 
     return scoreCandidate(candidate, security, ctx);
   });
 
-  latest = scored.sort((a, b) => b.score - a.score).slice(0, 35);
+  latest = scored.sort((a, b) => b.score - a.score).slice(0, 40);
   bus.emitEvent('candidates', latest);
 
   const tradable = latest.filter((c) => c.tradable).length;

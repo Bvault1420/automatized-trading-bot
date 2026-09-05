@@ -2,6 +2,7 @@ import { getJson } from '../util/http.js';
 import { createLogger } from '../util/logger.js';
 import { safeNumber } from '../util/num.js';
 import { fetchFreshTokenAddresses } from '../intel/fresh.js';
+import { fetchPumpFunMints } from './pumpfun.js';
 import type { PairSnapshot, TokenCandidate } from '../types.js';
 
 const log = createLogger('scanner');
@@ -40,7 +41,17 @@ const CHAIN_QUERIES: Record<string, string[]> = {
   base: ['WETH base', 'USDC base'],
   ethereum: ['WETH ethereum'],
   bsc: ['WBNB bsc'],
-  solana: ['SOL raydium', 'SOL pumpswap', 'SOL meteora', 'SOL orca', 'pump'],
+  solana: [
+    'pump.fun solana',
+    'pumpswap solana',
+    'SOL raydium',
+    'SOL meteora',
+    'SOL orca',
+    'pump solana',
+    'bonk launchlab',
+    'moonshot solana',
+    'SOL bags',
+  ],
   arbitrum: ['WETH arbitrum'],
 };
 
@@ -147,9 +158,10 @@ export async function discoverCandidates(
   minLiquidityUsd: number,
   extraQueries: string[] = [],
 ): Promise<TokenCandidate[]> {
-  const [boosts, freshAddresses] = await Promise.all([
+  const [boosts, freshAddresses, pumpMints] = await Promise.all([
     fetchBoosted(chains).catch(() => new Map<string, number>()),
     fetchFreshTokenAddresses(chains).catch(() => new Map<string, string[]>()),
+    chains.includes('solana') ? fetchPumpFunMints(120).catch(() => []) : Promise.resolve([]),
   ]);
 
   const tasks: Promise<DexPair[]>[] = [];
@@ -157,7 +169,7 @@ export async function discoverCandidates(
     for (const query of CHAIN_QUERIES[chain] ?? [chain]) {
       tasks.push(searchPairs(query).catch(() => []));
     }
-    for (const term of extraQueries.slice(0, 6)) {
+    for (const term of extraQueries.slice(0, 10)) {
       tasks.push(searchPairs(`${term} ${chain}`).catch(() => []));
     }
     const addresses = [
@@ -165,7 +177,8 @@ export async function discoverCandidates(
         .filter((key) => key.startsWith(`${chain}:`))
         .map((key) => key.slice(chain.length + 1)),
       ...(freshAddresses.get(chain) ?? []),
-    ].slice(0, 80);
+      ...(chain === 'solana' ? pumpMints : []),
+    ].slice(0, 140);
     if (addresses.length > 0) tasks.push(resolveTokens(chain, addresses).catch(() => []));
   }
 

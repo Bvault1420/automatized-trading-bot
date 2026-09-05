@@ -2,6 +2,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { getJson, getText } from '../util/http.js';
 import { analyzeSentiment } from './sentiment.js';
 import { annotateNewsItem, isJunkNews } from './importance.js';
+import { fetchPumpFunMints } from '../scanner/pumpfun.js';
 import { clamp } from '../util/num.js';
 import type { NewsItem } from '../types.js';
 
@@ -261,17 +262,10 @@ export async function fetchFreshTokenAddresses(chains: string[]): Promise<Map<st
 
   if (chains.includes('solana')) {
     tasks.push(
-      getJson<Array<Record<string, unknown>> | { coins?: Array<Record<string, unknown>> }>(
-        'https://frontend-api-v3.pump.fun/coins?offset=0&limit=40&sort=last_trade_timestamp&order=DESC&includeNsfw=false',
-        { cacheMs: 40_000, timeoutMs: 8_000 },
-      )
-        .then((res) => {
-          const coins = Array.isArray(res) ? res : (res?.coins ?? []);
+      fetchPumpFunMints(90)
+        .then((mints) => {
           const bucket = out.get('solana') ?? [];
-          for (const coin of coins) {
-            const mint = typeof coin.mint === 'string' ? coin.mint : typeof coin.coinMint === 'string' ? coin.coinMint : null;
-            if (mint) bucket.push(mint);
-          }
+          bucket.push(...mints);
           out.set('solana', bucket);
         })
         .catch(() => undefined),
@@ -280,7 +274,7 @@ export async function fetchFreshTokenAddresses(chains: string[]): Promise<Map<st
 
   await Promise.all(tasks);
   for (const [chain, addresses] of out) {
-    out.set(chain, [...new Set(addresses.map((a) => a.trim()).filter(Boolean))].slice(0, 50));
+    out.set(chain, [...new Set(addresses.map((a) => a.trim()).filter(Boolean))].slice(0, 90));
   }
   return out;
 }
