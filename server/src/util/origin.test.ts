@@ -22,6 +22,18 @@ describe('originAllowed', () => {
     assert.equal(originAllowed('http://10.0.0.42:5173', 8787), true);
   });
 
+  it('erlaubt Cursor-Tunnel-Hosts (Handy = gleiche HTTPS-URL wie PC)', () => {
+    assert.equal(originAllowed('https://abc-5173.us6p.cursorvm.com', 8787), true);
+    assert.equal(originAllowed('https://something.cvm.dev', 8787), true);
+    assert.equal(
+      originAllowed(
+        'https://ce42a836ddb10ab9d177-pod-ewnekshmznae7jxrmrswuss2qe-5173.us6p.cursorvm.com',
+        8787,
+      ),
+      true,
+    );
+  });
+
   it('lehnt fremde Origins auf anderem Port ab', () => {
     assert.equal(originAllowed('https://evil.example:443', 8787), false);
     assert.equal(originAllowed('http://192.168.1.20:3000', 8787), false);
