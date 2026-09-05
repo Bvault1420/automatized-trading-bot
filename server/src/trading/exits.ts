@@ -61,8 +61,12 @@ export function decideExit(
   const exitCost = sellCostUsd(position, snapshot, costs);
   const net = netAfterEstimatedSell(position, exitCost);
 
-  if (snapshot && snapshot.liquidityUsd > 0 && snapshot.liquidityUsd < settings.minLiquidityUsd * 0.4) {
+  if (snapshot && snapshot.liquidityUsd > 0 && snapshot.liquidityUsd < settings.minLiquidityUsd * 0.55) {
     return { fraction: 1, reason: 'Liquidität eingebrochen – Notausstieg', urgent: true };
+  }
+
+  if (micro && pnlPct <= -12) {
+    return { fraction: 1, reason: `Kapitalschutz bei ${pnlPct.toFixed(1)}%`, urgent: true };
   }
 
   if (pnlPct <= -Math.abs(settings.stopLossPct)) {

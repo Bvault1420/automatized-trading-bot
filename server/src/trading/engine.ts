@@ -11,7 +11,7 @@ import { portfolio } from './portfolio.js';
 import { checkCandidate, checkGlobalRisk, positionSizeUsd, type RiskContext } from './risk.js';
 import { confirmLiveTape } from './entry.js';
 import { decideExit } from './exits.js';
-import { decoratePosition, estimateRoundTripCostUsd, isMicroAccount, roundTripAllowsEntry } from './fees.js';
+import { decoratePosition, estimateRoundTripCostUsd, isMicroAccount, isRecoveryAccount, roundTripAllowsEntry } from './fees.js';
 import { lossCooldownMs, rememberTrade } from './learning.js';
 import { PaperExecutor } from './executor/paper.js';
 import { LiveExecutor } from './executor/live.js';
@@ -442,14 +442,15 @@ class Engine {
       }
 
       const nativePrice = ctx.nativePriceUsd ?? 100;
+      const recovery = isRecoveryAccount(ctx.state.equityUsd, ctx.state.startEquityUsd);
       const rt = estimateRoundTripCostUsd({
         notionalUsd: size,
         nativePriceUsd: nativePrice,
         liquidityUsd: candidate.candidate.liquidityUsd,
-        micro: isMicroAccount(ctx.state.equityUsd),
+        micro: isMicroAccount(ctx.state.equityUsd) || recovery,
         includeAtaRent: false,
       });
-      const feeCheck = roundTripAllowsEntry(size, this.settings.takeProfitPct, rt);
+      const feeCheck = roundTripAllowsEntry(size, this.settings.takeProfitPct, rt, recovery);
       if (!feeCheck.ok) {
         lastBlock = `${candidate.candidate.symbol}: ${feeCheck.reason}`;
         continue;

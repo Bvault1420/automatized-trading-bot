@@ -1,6 +1,6 @@
 import { clamp } from '../util/num.js';
 import { effectiveMinScore, marketEntryBlocked } from './entry.js';
-import { isMicroAccount } from './fees.js';
+import { isMicroAccount, isRecoveryAccount, minTradeUsd } from './fees.js';
 import { portfolio } from './portfolio.js';
 import type { BotSettings, MarketIntel, PortfolioState, ScoredCandidate } from '../types.js';
 
@@ -23,13 +23,13 @@ export interface RiskVerdict {
 
 const MIN_TRADE_USD = 1;
 
-export { isMicroAccount } from './fees.js';
-
+export { isMicroAccount, isRecoveryAccount, minTradeUsd } from './fees.js';
 /** Globale Schutzschalter – gelten unabhaengig vom einzelnen Kandidaten. */
 export function checkGlobalRisk(ctx: RiskContext): RiskVerdict {
   const { settings, state } = ctx;
+  const recovery = isRecoveryAccount(state.equityUsd, state.startEquityUsd);
 
-  if (state.dayPnlPct <= -Math.abs(settings.dailyLossLimitPct)) {
+  if (!recovery && state.dayPnlPct <= -Math.abs(settings.dailyLossLimitPct)) {
     return {
       allowed: false,
       reason: `Tagesverlustlimit erreicht (${state.dayPnlPct.toFixed(1)}%)`,
@@ -37,7 +37,7 @@ export function checkGlobalRisk(ctx: RiskContext): RiskVerdict {
     };
   }
 
-  if (state.drawdownPct >= Math.abs(settings.maxDrawdownPct)) {
+  if (!recovery && state.drawdownPct >= Math.abs(settings.maxDrawdownPct)) {
     return {
       allowed: false,
       reason: `Maximaler Drawdown erreicht (${state.drawdownPct.toFixed(1)}%)`,
@@ -65,8 +65,9 @@ export function checkGlobalRisk(ctx: RiskContext): RiskVerdict {
     return { allowed: false, reason: `Maximale Positionsanzahl erreicht (${openCount}/${maxOpen})` };
   }
 
-  if (ctx.availableCashUsd < MIN_TRADE_USD) {
-    return { allowed: false, reason: `Zu wenig freies Kapital ($${ctx.availableCashUsd.toFixed(2)})` };
+  const minTrade = minTradeUsd(state.equityUsd, state.startEquityUsd);
+  if (ctx.availableCashUsd < minTrade) {
+    return { allowed: false, reason: `Zu wenig freies Kapital ($${ctx.availableCashUsd.toFixed(2)}, min. $${minTrade.toFixed(2)})` };
   }
 
   return { allowed: true, reason: 'Risikoprüfung bestanden' };
@@ -112,10 +113,13 @@ export function checkCandidate(candidate: ScoredCandidate, ctx: RiskContext): Ri
 export function positionSizeUsd(candidate: ScoredCandidate, ctx: RiskContext): number {
   const { settings, state } = ctx;
   const liquidityCap = candidate.candidate.liquidityUsd * 0.0015;
+  const recovery = isRecoveryAccount(state.equityUsd, state.startEquityUsd);
+  const minTrade = minTradeUsd(state.equityUsd, state.startEquityUsd);
 
-  if (isMicroAccount(state.equityUsd)) {
-    const size = Math.min(ctx.availableCashUsd * 0.82, state.equityUsd * 0.85, liquidityCap);
-    return size >= MIN_TRADE_USD ? Number(size.toFixed(4)) : 0;
+  if (isMicroAccount(state.equityUsd) || recovery) {
+    const cashFactor = recovery ? 0.94 : 0.82;
+    const size = Math.min(ctx.availableCashUsd * cashFactor, state.equityUsd * (recovery ? 0.9 : 0.85), liquidityCap);
+    return size >= minTrade ? Number(size.toFixed(4)) : 0;
   }
 
   const base = state.equityUsd * (settings.riskPerTradePct / 100);
@@ -128,7 +132,7 @@ export function positionSizeUsd(candidate: ScoredCandidate, ctx: RiskContext): n
   const cashCap = ctx.availableCashUsd * (remainingSlots === 1 ? 0.85 : 0.5);
 
   const size = Math.min(base * conviction * regimeFactor * lossFactor, liquidityCap, cashCap);
-  return size >= MIN_TRADE_USD ? Number(size.toFixed(4)) : 0;
+  return size >= minTradeUsd(state.equityUsd, state.startEquityUsd) ? Number(size.toFixed(4)) : 0;
 }
 
 export { MIN_TRADE_USD };

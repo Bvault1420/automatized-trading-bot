@@ -4,6 +4,12 @@ import type { Position } from '../types.js';
 /** Unter diesem Equity: eine Position, ein Exit, knappes Gas. */
 export const MICRO_EQUITY_USD = 8;
 
+/** Nach schwerem Verlust: Restkapital (~1 €) soll noch handelbar sein. */
+export const RECOVERY_EQUITY_USD = 2.5;
+
+export const MIN_TRADE_USD = 1;
+export const MIN_TRADE_RECOVERY_USD = 0.55;
+
 /**
  * SOL, die für einen Jupiter-Verkauf liegen bleiben müssen.
  * Kleiner als früher (0.008), reicht für eine Exit-Tx inkl. Priority-Fee.
@@ -22,6 +28,15 @@ export const AMM_FEE_PCT = 0.3;
 
 export function isMicroAccount(equityUsd: number): boolean {
   return equityUsd > 0 && equityUsd <= MICRO_EQUITY_USD;
+}
+
+/** Konto stark unter Start – Drawdown-Halt lockern, kleinere Tickets erlauben. */
+export function isRecoveryAccount(equityUsd: number, startEquityUsd: number): boolean {
+  return equityUsd > 0 && equityUsd <= RECOVERY_EQUITY_USD && startEquityUsd > equityUsd * 1.3;
+}
+
+export function minTradeUsd(equityUsd: number, startEquityUsd: number): number {
+  return isRecoveryAccount(equityUsd, startEquityUsd) ? MIN_TRADE_RECOVERY_USD : MIN_TRADE_USD;
 }
 
 export interface SwapCostInput {
@@ -107,10 +122,24 @@ export function roundTripAllowsEntry(
   notionalUsd: number,
   takeProfitPct: number,
   rt: SwapCostEstimate,
+  recovery = false,
 ): { ok: boolean; reason: string } {
   if (!(notionalUsd > 0)) return { ok: false, reason: 'Positionsgröße ungültig' };
+
+  if (recovery) {
+    const maxCostPct = 38;
+    if (rt.costPct <= maxCostPct) {
+      return { ok: true, reason: 'Recovery: Round-Trip-Kosten tragbar' };
+    }
+    return {
+      ok: false,
+      reason: `Recovery: Round-Trip ~$${rt.costUsd.toFixed(2)} (${rt.costPct.toFixed(1)}%) frisst zu viel vom Restkapital`,
+    };
+  }
+
   const tpUsd = notionalUsd * (Math.abs(takeProfitPct) / 100);
-  if (rt.costUsd >= tpUsd * 0.55) {
+  const maxCostShare = 0.55;
+  if (rt.costUsd >= tpUsd * maxCostShare) {
     return {
       ok: false,
       reason: `Round-Trip ~$${rt.costUsd.toFixed(2)} (${rt.costPct.toFixed(1)}%) würde den ${takeProfitPct}% Take-Profit größtenteils auffressen`,

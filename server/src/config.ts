@@ -112,9 +112,9 @@ export const config = {
     /** Makro-/News-/Stimmungsdaten (langsam veraenderlich). */
     intel: 50_000,
     /** Suche nach neuen Handelskandidaten. */
-    scan: 18_000,
-    /** Preis-Update offener Positionen + Exit-Pruefung. */
-    tick: 5_000,
+    scan: 15_000,
+    /** Preis-Update offener Positionen + Exit-Pruefung (alle 20 s). */
+    tick: 20_000,
   },
 
   defaults: {
@@ -122,10 +122,10 @@ export const config = {
     paperStartBalance: num('PAPER_START_BALANCE', 4.4),
     maxOpenPositions: num('MAX_OPEN_POSITIONS', 1),
     riskPerTradePct: num('RISK_PER_TRADE_PCT', 78),
-    stopLossPct: num('STOP_LOSS_PCT', 10),
+    stopLossPct: num('STOP_LOSS_PCT', 8),
     takeProfitPct: num('TAKE_PROFIT_PCT', 16),
     trailingStopPct: num('TRAILING_STOP_PCT', 7),
-    maxHoldMinutes: num('MAX_HOLD_MINUTES', 18),
+    maxHoldMinutes: num('MAX_HOLD_MINUTES', 15),
     dailyLossLimitPct: num('DAILY_LOSS_LIMIT_PCT', 28),
     maxDrawdownPct: num('MAX_DRAWDOWN_PCT', 40),
     minLiquidityUsd: num('MIN_LIQUIDITY_USD', 15_000),

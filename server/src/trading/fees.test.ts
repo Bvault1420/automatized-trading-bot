@@ -4,6 +4,8 @@ import {
   estimateRoundTripCostUsd,
   estimateSellCostUsd,
   isMicroAccount,
+  isRecoveryAccount,
+  minTradeUsd,
   netAfterEstimatedSell,
   roundTripAllowsEntry,
 } from './fees.js';
@@ -51,23 +53,21 @@ describe('fees', () => {
     assert.equal(allowed.ok, true);
   });
 
-  it('macht ein kleines Kursplus nach Verkaufskosten zum Netto-Minus', () => {
-    const sell = estimateSellCostUsd({
-      notionalUsd: 2.7,
+  it('erlaubt Recovery-Einstiege mit lockerer Fee-Hürde', () => {
+    const rt = estimateRoundTripCostUsd({
+      notionalUsd: 0.62,
       nativePriceUsd: 100,
-      liquidityUsd: 40_000,
+      liquidityUsd: 50_000,
       micro: true,
+      includeAtaRent: false,
     });
-    const net = netAfterEstimatedSell(
-      {
-        costUsd: 2.61,
-        tokenAmount: 196,
-        lastPrice: 2.7 / 196,
-        realizedUsd: 0,
-        feesUsd: 0,
-      },
-      sell.costUsd,
-    );
-    assert.ok(net.netUsd < 0, `erwartet Netto-Verlust, war ${net.netUsd}`);
+    assert.equal(roundTripAllowsEntry(0.62, 16, rt, false).ok, false);
+    assert.equal(roundTripAllowsEntry(0.62, 16, rt, true).ok, true);
+  });
+
+  it('erkennt Recovery-Konten', () => {
+    assert.equal(isRecoveryAccount(1.05, 3.99), true);
+    assert.equal(minTradeUsd(1.05, 3.99), 0.55);
+    assert.equal(isRecoveryAccount(3.5, 3.99), false);
   });
 });

@@ -11,7 +11,7 @@ import type {
   Trade,
   TradingMode,
 } from '../types.js';
-import { estimateSellCostUsd } from './fees.js';
+import { estimateSellCostUsd, isRecoveryAccount } from './fees.js';
 
 const MAX_EQUITY_POINTS = 2000;
 
@@ -119,6 +119,18 @@ export const portfolio = {
       const b = mode === 'paper' ? draft.paper : draft.live;
       if (b.startEquityUsd <= 0 && state.equityUsd > 0) b.startEquityUsd = state.equityUsd;
       if (b.dayStartEquityUsd <= 0 && state.equityUsd > 0) b.dayStartEquityUsd = state.equityUsd;
+
+      // Nach Crash: Peak/Tagesbasis auf Restkapital setzen, damit Drawdown-Halt nicht dauerhaft blockiert.
+      if (
+        isRecoveryAccount(state.equityUsd, state.startEquityUsd) &&
+        state.drawdownPct >= 40 &&
+        b.peakEquityUsd > state.equityUsd * 1.05
+      ) {
+        b.peakEquityUsd = state.equityUsd;
+        b.dayStartEquityUsd = state.equityUsd;
+        b.dayStartedAt = Date.now();
+      }
+
       if (state.equityUsd > b.peakEquityUsd) b.peakEquityUsd = state.equityUsd;
 
       if (Date.now() - b.dayStartedAt > 24 * 3_600_000) {
