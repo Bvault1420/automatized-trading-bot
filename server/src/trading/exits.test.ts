@@ -90,7 +90,7 @@ describe('decideExit', () => {
   it('beendet gescheiterte Einstiege, bevor der Stop-Loss greift', () => {
     const failed = decideExit(
       position({
-        openedAt: Date.now() - 12 * 60_000,
+        openedAt: Date.now() - 8 * 60_000,
         lastPrice: 0.95,
         pnlPct: -5,
         peakPrice: 1.01,
@@ -100,6 +100,45 @@ describe('decideExit', () => {
     );
     assert.ok(failed);
     assert.match(failed.reason, /Gescheiterter Einstieg/);
+  });
+
+  it('reagiert auf Liquiditäts- und News-Signale sofort', () => {
+    const liqDrop = decideExit(
+      position({ lastPrice: 1.02, pnlPct: 2 }),
+      settings,
+      snap({ liquidityUsd: 50_000 }),
+      Date.now(),
+      { entryLiquidityUsd: 78_000 },
+    );
+    assert.ok(liqDrop);
+    assert.match(liqDrop.reason, /Liquidität|Pool/i);
+
+    const news = decideExit(
+      position({ lastPrice: 1.01, pnlPct: 1 }),
+      settings,
+      snap(),
+      Date.now(),
+      {
+        intel: {
+          updatedAt: Date.now(),
+          riskAppetite: 0.35,
+          regime: 'risk-off',
+          signals: [],
+          fearGreed: null,
+          macro: null,
+          news: {
+            sentiment: -0.4,
+            bullishCount: 1,
+            bearishCount: 6,
+            items: [{ title: 'PEPE crash fears', url: '', source: 'x', publishedAt: Date.now(), sentiment: -0.5, matchedTerms: ['PEPE'] }],
+          },
+          social: { heat: 0, trendingTerms: [], freshPosts: 0, freshWindowMinutes: 60 },
+          narrative: '',
+        },
+      },
+    );
+    assert.ok(news);
+    assert.match(news.reason, /News|bärisch/i);
   });
 
   it('sichert gedrehtes Momentum und gibt abgegebene Gewinne nicht zurück', () => {

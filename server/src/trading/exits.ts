@@ -1,5 +1,5 @@
 import { isMicroAccount, estimateSellCostUsd, netAfterEstimatedSell } from './fees.js';
-import type { BotSettings, PairSnapshot, Position } from '../types.js';
+import type { BotSettings, MarketIntel, PairSnapshot, Position } from '../types.js';
 
 export interface ExitDecision {
   fraction: number;
@@ -10,6 +10,9 @@ export interface ExitDecision {
 export interface ExitCostContext {
   equityUsd?: number;
   nativePriceUsd?: number;
+  intel?: MarketIntel;
+  entryLiquidityUsd?: number;
+  entryVolumeM5?: number;
 }
 
 function sellCostUsd(position: Position, snapshot: PairSnapshot | null, ctx?: ExitCostContext): number {
@@ -31,18 +34,32 @@ function minNetProfitPct(settings: BotSettings): number {
   return Math.max(2, settings.takeProfitPct * 0.25);
 }
 
+function entryLiquidity(position: Position, ctx?: ExitCostContext): number {
+  return ctx?.entryLiquidityUsd ?? position.entryLiquidityUsd ?? 0;
+}
+
+function entryVolume(position: Position, ctx?: ExitCostContext): number {
+  return ctx?.entryVolumeM5 ?? position.entryVolumeM5 ?? 0;
+}
+
+function symbolNegativeNews(symbol: string, intel?: MarketIntel): string | null {
+  if (!intel) return null;
+  const sym = symbol.toUpperCase();
+  for (const item of intel.news.items) {
+    if (item.sentiment >= -0.18) continue;
+    const hit =
+      item.matchedTerms.some((t) => t.toUpperCase() === sym) ||
+      item.title.toUpperCase().includes(sym);
+    if (hit) return item.title.slice(0, 72);
+  }
+  return null;
+}
+
 /**
  * Ausstiegsregeln, bewusst defensiv: bei Memecoins entsteht der typische
  * Totalverlust durch Aussitzen, nicht durch zu frühes Mitnehmen.
  *
- * Reihenfolge: Notfall → Verlust begrenzen → These gebrochen → Gewinne sichern.
- *
- * Gewinnmitnahmen laufen erst, wenn das Plus nach geschätzten Verkaufskosten
- * (Jupiter-Impact, Swap-Fee, SOL-Tx) noch klar positiv ist. Auf Mini-Konten
- * ein Exit statt Teilverkäufen – jede Extra-Tx frisst sonst den Gewinn.
- *
- * Es gibt keine Garantie, dass Gas < Gewinn. Kurse können zwischen Ticks kippen.
- * Wir weigern uns nur, ein „grünes“ Plus zu verkaufen, das nach Fees rot wäre.
+ * Reihenfolge: Notfall (Liq/News/Tape) → Verlust begrenzen → These gebrochen → Gewinne sichern.
  */
 export function decideExit(
   position: Position,
@@ -60,9 +77,63 @@ export function decideExit(
   const micro = useSingleExit(position, costs);
   const exitCost = sellCostUsd(position, snapshot, costs);
   const net = netAfterEstimatedSell(position, exitCost);
+  const intel = costs?.intel;
+  const liqAtEntry = entryLiquidity(position, costs);
+  const volAtEntry = entryVolume(position, costs);
 
-  if (snapshot && snapshot.liquidityUsd > 0 && snapshot.liquidityUsd < settings.minLiquidityUsd * 0.55) {
+  // --- Notfall: Liquidität, Volumen, News, Makro ---
+  if (snapshot && snapshot.liquidityUsd > 0 && snapshot.liquidityUsd < settings.minLiquidityUsd * 0.68) {
     return { fraction: 1, reason: 'Liquidität eingebrochen – Notausstieg', urgent: true };
+  }
+
+  if (snapshot && liqAtEntry > 0 && snapshot.liquidityUsd > 0) {
+    const liqDropPct = ((liqAtEntry - snapshot.liquidityUsd) / liqAtEntry) * 100;
+    if (liqDropPct >= 22) {
+      return {
+        fraction: 1,
+        reason: `Pool-Liquidität −${liqDropPct.toFixed(0)}% seit Einstieg`,
+        urgent: true,
+      };
+    }
+  }
+
+  if (snapshot && volAtEntry > 400) {
+    const volRatio = snapshot.volumeM5 / volAtEntry;
+    if (volRatio < 0.32 && (snapshot.priceChangeM5 <= -2 || pnlPct < 5)) {
+      return { fraction: 1, reason: 'Handelsvolumen eingebrochen – Ausstieg', urgent: true };
+    }
+  }
+
+  if (snapshot && snapshot.volumeM5 > 0 && snapshot.volumeM5 < 350 && snapshot.priceChangeM5 <= -4 && ageMinutes >= 1) {
+    return { fraction: 1, reason: 'Dünner Tape + fallender Kurs – Ausstieg', urgent: true };
+  }
+
+  const badHeadline = symbolNegativeNews(position.symbol, intel);
+  if (badHeadline) {
+    return { fraction: 1, reason: `Negative News – ${badHeadline}`, urgent: true };
+  }
+
+  if (intel) {
+    if (
+      intel.news.sentiment < -0.26 &&
+      intel.news.bearishCount > intel.news.bullishCount + 1 &&
+      pnlPct < 8
+    ) {
+      return { fraction: 1, reason: 'Bärisches News-Umfeld – defensive Schließung', urgent: true };
+    }
+
+    const btc = intel.macro?.btc;
+    if (btc && btc.change24h <= -5.5 && pnlPct < 5) {
+      return {
+        fraction: 1,
+        reason: `BTC unter Druck (${btc.change24h.toFixed(1)}%) – Position geschlossen`,
+        urgent: true,
+      };
+    }
+
+    if (intel.regime === 'risk-off' && pnlPct < 2 && snapshot && snapshot.priceChangeM5 <= -3) {
+      return { fraction: 1, reason: 'Risk-off Markt + schwacher Tape – Ausstieg', urgent: true };
+    }
   }
 
   if (micro && pnlPct <= -12) {
@@ -73,8 +144,7 @@ export function decideExit(
     return { fraction: 1, reason: `Stop-Loss bei ${pnlPct.toFixed(1)}%`, urgent: true };
   }
 
-  // These gebrochen: der Tape dreht, bevor der Stop-Loss greift.
-  if (snapshot && snapshot.priceChangeM5 <= -7 && pnlPct < 4) {
+  if (snapshot && snapshot.priceChangeM5 <= -5 && pnlPct < 6) {
     return {
       fraction: 1,
       reason: `These gebrochen – 5m ${snapshot.priceChangeM5.toFixed(1)}% bei ${pnlPct.toFixed(1)}%`,
@@ -82,7 +152,7 @@ export function decideExit(
     };
   }
 
-  if (snapshot && snapshot.priceChangeM5 <= -12) {
+  if (snapshot && snapshot.priceChangeM5 <= -10) {
     return {
       fraction: 1,
       reason: `Abrupter Dump (${snapshot.priceChangeM5.toFixed(1)}% in 5m)`,
@@ -92,12 +162,11 @@ export function decideExit(
 
   const tapeSells = snapshot ? snapshot.sellsM5 : 0;
   const tapeBuys = snapshot ? snapshot.buysM5 : 0;
-  if (snapshot && tapeSells + tapeBuys >= 10 && tapeSells > tapeBuys * 1.7 && pnlPct < 8 && ageMinutes >= 3) {
+  if (snapshot && tapeSells + tapeBuys >= 6 && tapeSells > tapeBuys * 1.45 && pnlPct < 10) {
     return { fraction: 1, reason: 'Verkäufer dominieren den Tape – Ausstieg', urgent: true };
   }
 
-  // Gescheiterter Einstieg: nicht auf den Stop-Loss warten.
-  if (ageMinutes >= 8 && pnlPct <= -4 && (!snapshot || snapshot.priceChangeM5 <= 0)) {
+  if (ageMinutes >= 5 && pnlPct <= -3.5 && (!snapshot || snapshot.priceChangeM5 <= 0)) {
     return {
       fraction: 1,
       reason: `Gescheiterter Einstieg nach ${Math.round(ageMinutes)} Min. (${pnlPct.toFixed(1)}%)`,
@@ -105,13 +174,12 @@ export function decideExit(
     };
   }
 
-  if (ageMinutes >= 6 && pnlPct < -2 && snapshot && snapshot.priceChangeH1 <= -8) {
+  if (ageMinutes >= 4 && pnlPct < -1.5 && snapshot && snapshot.priceChangeH1 <= -6) {
     return { fraction: 1, reason: `1h-Trend gegen die Position (${snapshot.priceChangeH1.toFixed(1)}%)`, urgent: true };
   }
 
   const netEnough = net.netPct >= minNetProfitPct(settings);
 
-  // Gewinnmitnahme: Mini-Konto verkauft komplett, größere Konten dürfen staffeln.
   if (position.partialsTaken === 0 && pnlPct >= settings.takeProfitPct) {
     if (!netEnough) return null;
     return {
@@ -140,14 +208,12 @@ export function decideExit(
     };
   }
 
-  // Gewinn sichern, sobald Momentum kippt – nicht erst tief im Plus.
-  if (pnlPct > 5 && snapshot && snapshot.priceChangeM5 <= -6) {
+  if (pnlPct > 4 && snapshot && snapshot.priceChangeM5 <= -5) {
     if (net.netUsd <= 0) return null;
     return { fraction: 1, reason: 'Momentum gedreht – Gewinn gesichert', urgent: true };
   }
 
-  // Gewinne, die schon wieder fast weg sind, nicht in einen Verlust laufen lassen.
-  if (peakPnlPct >= settings.takeProfitPct * 0.7 && pnlPct < 2 && drawdownFromPeak >= 6) {
+  if (peakPnlPct >= settings.takeProfitPct * 0.65 && pnlPct < 2.5 && drawdownFromPeak >= 5) {
     return {
       fraction: 1,
       reason: `Gewinn abgegeben – Hoch +${peakPnlPct.toFixed(1)}%, jetzt ${pnlPct.toFixed(1)}%`,
@@ -156,7 +222,6 @@ export function decideExit(
   }
 
   if (ageMinutes >= settings.maxHoldMinutes && pnlPct < 8) {
-    // Mini-Grün nach Fees oft rot: nicht per Zeitstopp verschenken, SL/TP bleiben.
     if (net.netUsd <= 0 && pnlPct > -2) {
       // weiter halten bis echter TP, SL oder harte Haltedauer
     } else {

@@ -93,6 +93,20 @@ export function checkCandidate(candidate: ScoredCandidate, ctx: RiskContext): Ri
     };
   }
 
+  if (candidate.rawScore < 52) {
+    return {
+      allowed: false,
+      reason: `Setup-Qualität zu schwach (raw ${candidate.rawScore.toFixed(1)} < 52)`,
+    };
+  }
+
+  if (candidate.security.checked && candidate.security.score < 0.48) {
+    return {
+      allowed: false,
+      reason: `Sicherheits-Score zu niedrig (${(candidate.security.score * 100).toFixed(0)}%)`,
+    };
+  }
+
   if (
     portfolio.hasOpenPosition(
       ctx.settings.tradingMode,

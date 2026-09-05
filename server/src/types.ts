@@ -171,6 +171,9 @@ export interface Position {
   entryPrice: number;
   entryScore: number;
   entryReason: string;
+  /** Liquidität/Volumen beim Einstieg – für schnelle Exit-Signale. */
+  entryLiquidityUsd?: number;
+  entryVolumeM5?: number;
   /** aktuell gehaltene Tokenmenge */
   tokenAmount: number;
   /** urspruenglich gekaufte Tokenmenge */

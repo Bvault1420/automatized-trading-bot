@@ -178,6 +178,8 @@ export const portfolio = {
     feeUsd: number;
     entryScore: number;
     entryReason: string;
+    entryLiquidityUsd?: number;
+    entryVolumeM5?: number;
     stopLossPct: number;
     takeProfitPct: number;
     txHash?: string;
@@ -207,6 +209,8 @@ export const portfolio = {
       entryPrice: input.entryPrice,
       entryScore: input.entryScore,
       entryReason: input.entryReason,
+      entryLiquidityUsd: input.entryLiquidityUsd,
+      entryVolumeM5: input.entryVolumeM5,
       tokenAmount: input.tokenAmount,
       initialTokenAmount: input.tokenAmount,
       costUsd: input.costUsd,

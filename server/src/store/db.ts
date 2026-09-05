@@ -58,7 +58,7 @@ const LEGACY_FACTORY_SETTINGS = {
   minEntryScore: 55,
 } as const;
 
-const STRATEGY_VERSION = 7;
+const STRATEGY_VERSION = 8;
 
 function migrateSettings(parsed: DbShape, fresh: BotSettings): BotSettings {
   const settings = { ...fresh, ...parsed.settings };
@@ -96,6 +96,9 @@ function migrateSettings(parsed: DbShape, fresh: BotSettings): BotSettings {
   if ((parsed.version ?? 1) < 7) {
     next.stopLossPct = fresh.stopLossPct;
     next.maxHoldMinutes = fresh.maxHoldMinutes;
+  }
+  if ((parsed.version ?? 1) < 8) {
+    next.minEntryScore = fresh.minEntryScore;
   }
   return next;
 }

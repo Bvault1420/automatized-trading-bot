@@ -36,6 +36,9 @@ export function hardRejections(c: TokenCandidate, security: SecurityReport, ctx:
   if (ctx.liveChain && !security.checked) {
     reasons.push('Sicherheitsprüfung nicht verfügbar – kein Live-Kauf');
   }
+  if (security.score < 0.42 && security.checked) {
+    reasons.push('Contract-Sicherheit unter Mindestqualität');
+  }
   if (!security.ok) reasons.push('Sicherheitsprüfung nicht bestanden');
   if (security.sellTaxPct > 10) reasons.push(`Verkaufssteuer zu hoch (${security.sellTaxPct.toFixed(1)}%)`);
   if (security.top10HolderPct >= 75) {
@@ -45,7 +48,7 @@ export function hardRejections(c: TokenCandidate, security: SecurityReport, ctx:
   if (c.liquidityUsd < ctx.minLiquidityUsd) {
     reasons.push(`Liquidität zu gering ($${Math.round(c.liquidityUsd).toLocaleString('de-DE')})`);
   }
-  if (c.volume.h1 < 3_000) reasons.push('Zu wenig Handelsvolumen (1h)');
+  if (c.volume.h1 < 2_500) reasons.push('Zu wenig Handelsvolumen (1h)');
 
   const txnsH1 = c.txns.h1.buys + c.txns.h1.sells;
   if (txnsH1 < 15) reasons.push('Zu wenige Transaktionen (1h)');
@@ -197,15 +200,15 @@ function hypeScore(c: TokenCandidate, intel: MarketIntel): { value: number; deta
 }
 
 const WEIGHTS = {
-  momentum: 0.18,
+  momentum: 0.17,
   buyPressure: 0.16,
-  volume: 0.13,
+  volume: 0.14,
   liquidity: 0.1,
-  security: 0.18,
+  security: 0.2,
   age: 0.07,
   size: 0.05,
-  structure: 0.1,
-  hype: 0.03,
+  structure: 0.09,
+  hype: 0.02,
 } as const;
 
 /**

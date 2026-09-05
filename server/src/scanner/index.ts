@@ -26,7 +26,7 @@ export interface ScanOptions extends Omit<ScoringContext, 'blacklist' | 'cooldow
  */
 export async function runScan(options: ScanOptions): Promise<ScoredCandidate[]> {
   const started = Date.now();
-  const hotQueries = options.intel.social.trendingTerms.slice(0, 6).map((t) => t.term);
+  const hotQueries = options.intel.social.trendingTerms.slice(0, 8).map((t) => t.term);
   const candidates = await discoverCandidates(options.chains, options.minLiquidityUsd, hotQueries);
 
   if (candidates.length === 0) {
@@ -70,9 +70,9 @@ export async function runScan(options: ScanOptions): Promise<ScoredCandidate[]> 
     .sort((a, b) => b.pre.rawScore - a.pre.rawScore);
   const showcase = [...cheap].sort((a, b) => b.pre.rawScore - a.pre.rawScore);
   const picked = new Map<string, (typeof cheap)[number]>();
-  for (const row of [...viable.slice(0, 20), ...showcase.slice(0, 10)]) {
+  for (const row of [...viable.slice(0, 32), ...showcase.slice(0, 14)]) {
     picked.set(row.candidate.id, row);
-    if (picked.size >= 28) break;
+    if (picked.size >= 42) break;
   }
   const preRanked = [...picked.values()];
 
@@ -81,7 +81,7 @@ export async function runScan(options: ScanOptions): Promise<ScoredCandidate[]> 
     return scoreCandidate(candidate, security, ctx);
   });
 
-  latest = scored.sort((a, b) => b.score - a.score).slice(0, 25);
+  latest = scored.sort((a, b) => b.score - a.score).slice(0, 35);
   bus.emitEvent('candidates', latest);
 
   const tradable = latest.filter((c) => c.tradable).length;

@@ -70,8 +70,8 @@ export function effectiveMinScore(
   consecutiveLosses: number,
 ): number {
   let min = settings.minEntryScore;
-  if (intel.regime === 'risk-off') min += 4;
-  if (consecutiveLosses >= 3) min += 4;
+  if (intel.regime === 'risk-off') min += 2;
+  if (consecutiveLosses >= 3) min += 3;
   return clamp(min, 0, 88);
 }
 

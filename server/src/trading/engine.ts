@@ -346,6 +346,9 @@ class Engine {
       const decision = decideExit(position, this.settings, snapshot, Date.now(), {
         equityUsd: ctx.state.equityUsd,
         nativePriceUsd: ctx.nativePriceUsd,
+        intel: ctx.intel,
+        entryLiquidityUsd: position.entryLiquidityUsd,
+        entryVolumeM5: position.entryVolumeM5,
       });
       if (!decision) continue;
       await this.executeSell(position, decision.fraction, decision.reason);
@@ -518,6 +521,8 @@ class Engine {
       feeUsd: result.feeUsd,
       entryScore: round(scored.score, 1),
       entryReason: reason,
+      entryLiquidityUsd: tape?.liquidityUsd ?? c.liquidityUsd,
+      entryVolumeM5: tape?.volumeM5 ?? c.volume.m5,
       stopLossPct: this.settings.stopLossPct,
       takeProfitPct: this.settings.takeProfitPct,
       txHash: result.txHash,

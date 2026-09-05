@@ -200,7 +200,7 @@ export async function fetchPairSnapshot(
   pairAddress: string,
 ): Promise<PairSnapshot | null> {
   const res = await getJson<{ pairs?: DexPair[] } | DexPair[]>(`${API}/latest/dex/pairs/${chain}/${pairAddress}`, {
-    cacheMs: 4_000,
+    cacheMs: 2_500,
     timeoutMs: 8_000,
   });
   const pairs = Array.isArray(res) ? res : (res?.pairs ?? []);
