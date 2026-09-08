@@ -1,1 +1,0 @@
-# automatized-trading-bot
