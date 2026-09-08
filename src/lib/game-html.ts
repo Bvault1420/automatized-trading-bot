@@ -64,7 +64,7 @@ export function prepareGameDocument(html: string): string {
   const hasBody = /<body[\s>]/i.test(doc);
 
   if (!hasHtmlTag) {
-    doc = hasBody ? `<html>${doc}</html>` : `<html><head></head><body>${doc}</body></html>`;
+    doc = hasBody ? `<html><head></head>${doc}</html>` : `<html><head></head><body>${doc}</body></html>`;
   } else if (!hasHead) {
     doc = doc.replace(/<html[^>]*>/i, (m) => `${m}<head></head>`);
   }
