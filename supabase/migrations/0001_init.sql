@@ -477,7 +477,7 @@ create policy "games_insert_own" on public.games for insert with check (
 );
 drop policy if exists "games_update_own" on public.games;
 create policy "games_update_own" on public.games for update
-  using (auth.uid() = author_id)
+  using (auth.uid() = author_id and status <> 'removed')
   with check (
     auth.uid() = author_id
     and status in ('draft', 'published')
@@ -744,4 +744,6 @@ grant execute on function public.game_counters_match(uuid, integer, integer, int
 grant execute on function public.profile_protected_match(uuid, boolean, boolean, integer, integer) to authenticated;
 grant execute on function public.can_remix(uuid) to authenticated;
 revoke all on public.rate_limits from anon, authenticated;
-revoke execute on function public.check_rate_limit(text, integer, integer) from anon, authenticated, public;
+revoke execute on function public.check_rate_limit(text, integer, integer) from anon, public;
+-- Nutzer dürfen sich nur selbst limitieren (KI-Kontingent wird serverseitig darüber geprüft).
+grant execute on function public.check_rate_limit(text, integer, integer) to authenticated;
