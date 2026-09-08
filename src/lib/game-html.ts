@@ -81,3 +81,17 @@ export function prepareGameDocument(html: string): string {
 export function htmlByteLength(html: string): number {
   return new TextEncoder().encode(html).length;
 }
+
+/** Antwort-Header für ausgelieferte Spiel-Dokumente (/embed/…). */
+export function gameResponseHeaders(): Record<string, string> {
+  return {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Security-Policy": gameContentSecurityPolicy(),
+    "X-Content-Type-Options": "nosniff",
+    "X-Robots-Tag": "noindex, nofollow",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Cache-Control": "private, no-store",
+  };
+}
