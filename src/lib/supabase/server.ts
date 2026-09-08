@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { cache } from "react";
-import { supabaseAnonKey, supabaseUrl } from "@/lib/supabase/env";
+import { isSupabaseConfigured, supabaseAnonKey, supabaseUrl } from "@/lib/supabase/env";
 import type { Profile } from "@/lib/types";
 
 export async function createClient() {
@@ -24,6 +24,7 @@ export async function createClient() {
 
 /** Aktuell angemeldeter Nutzer (per Request gecached). */
 export const getCurrentUser = cache(async () => {
+  if (!isSupabaseConfigured()) return null;
   const supabase = await createClient();
   const {
     data: { user },

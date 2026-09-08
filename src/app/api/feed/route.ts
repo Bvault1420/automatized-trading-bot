@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { FEED_PAGE_SIZE } from "@/lib/config";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import type { GameCard } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
+  if (!isSupabaseConfigured()) return NextResponse.json({ error: "Supabase ist nicht konfiguriert." }, { status: 503 });
   const params = request.nextUrl.searchParams;
   const mode = params.get("mode") === "following" ? "following" : params.get("mode") === "new" ? "new" : "foryou";
   const offset = Math.max(0, Math.min(5000, Number(params.get("offset") ?? 0) || 0));

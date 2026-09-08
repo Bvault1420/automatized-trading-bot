@@ -53,16 +53,26 @@ export function Feed({ initialItems, mode, seed, viewerId, isLoggedIn }: Props) 
     }
   }, [done, mode, seed]);
 
-  // Aktive Karte per IntersectionObserver bestimmen
+  // Always call the latest loadMore from the (long-lived) observer callback.
+  const loadMoreRef = useRef(loadMore);
+  useEffect(() => {
+    loadMoreRef.current = loadMore;
+  }, [loadMore]);
+
+  // Aktive Karte per IntersectionObserver bestimmen und bei Bedarf nachladen.
+  // The observer fires for the initially visible card too, so short feeds top up immediately.
   useEffect(() => {
     const root = scrollerRef.current;
     if (!root) return;
+    const total = items.length;
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
             const idx = Number((entry.target as HTMLElement).dataset.index);
-            if (!Number.isNaN(idx)) setActiveIndex(idx);
+            if (Number.isNaN(idx)) continue;
+            setActiveIndex(idx);
+            if (idx >= total - 3) void loadMoreRef.current();
           }
         }
       },
@@ -71,11 +81,6 @@ export function Feed({ initialItems, mode, seed, viewerId, isLoggedIn }: Props) 
     cardRefs.current.forEach((el) => el && observer.observe(el));
     return () => observer.disconnect();
   }, [items.length]);
-
-  // Nachladen, wenn das Ende näher kommt
-  useEffect(() => {
-    if (activeIndex >= items.length - 3) void loadMore();
-  }, [activeIndex, items.length, loadMore]);
 
   const scrollTo = useCallback((index: number) => {
     const el = cardRefs.current[index];

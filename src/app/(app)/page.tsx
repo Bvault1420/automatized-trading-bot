@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import Link from "next/link";
 import { FEED_PAGE_SIZE } from "@/lib/config";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
@@ -11,7 +12,8 @@ export const dynamic = "force-dynamic";
 export default async function HomePage({ searchParams }: PageProps<"/">) {
   const params = await searchParams;
   const tab = params.tab === "following" ? "following" : params.tab === "new" ? "new" : "foryou";
-  const seed = Math.random().toString(36).slice(2, 10);
+  // Server component: a fresh seed per request shuffles the "Für dich" feed.
+  const seed = randomBytes(4).toString("hex");
 
   const supabase = await createClient();
   const user = await getCurrentUser();

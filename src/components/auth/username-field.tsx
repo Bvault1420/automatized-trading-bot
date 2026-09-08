@@ -11,35 +11,38 @@ type Status = "idle" | "checking" | "free" | "taken" | "invalid";
 
 export function UsernameField({ error, defaultValue = "", currentUsername }: { error?: string | null; defaultValue?: string; currentUsername?: string }) {
   const [value, setValue] = useState(defaultValue);
-  const [status, setStatus] = useState<Status>("idle");
-  const [hint, setHint] = useState<string | null>(null);
+  // Result of the last availability lookup, keyed by the username it was made for.
+  const [lookup, setLookup] = useState<{ username: string; available: boolean } | null>(null);
+
+  const normalized = value.trim().toLowerCase();
+  const parsed = normalized && normalized !== currentUsername ? usernameSchema.safeParse(normalized) : null;
+
+  let status: Status = "idle";
+  let hint: string | null = null;
+  if (parsed) {
+    if (!parsed.success) {
+      status = "invalid";
+      hint = parsed.error.issues[0]?.message ?? "Ungültig";
+    } else if (lookup?.username === normalized) {
+      status = lookup.available ? "free" : "taken";
+      hint = lookup.available ? "Verfügbar" : "Bereits vergeben";
+    } else {
+      status = "checking";
+    }
+  }
 
   useEffect(() => {
-    const v = value.trim().toLowerCase();
-    if (!v || v === currentUsername) {
-      setStatus("idle");
-      setHint(null);
-      return;
-    }
-    const parsed = usernameSchema.safeParse(v);
-    if (!parsed.success) {
-      setStatus("invalid");
-      setHint(parsed.error.issues[0]?.message ?? "Ungültig");
-      return;
-    }
-    setStatus("checking");
-    setHint(null);
+    if (status !== "checking") return;
     const t = setTimeout(async () => {
       try {
-        const { data } = await createClient().rpc("is_username_available", { p_username: v });
-        setStatus(data ? "free" : "taken");
-        setHint(data ? "Verfügbar" : "Bereits vergeben");
+        const { data } = await createClient().rpc("is_username_available", { p_username: normalized });
+        setLookup({ username: normalized, available: Boolean(data) });
       } catch {
-        setStatus("idle");
+        // Leave the status as "checking"; the server validates on submit anyway.
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [value, currentUsername]);
+  }, [status, normalized]);
 
   return (
     <div>

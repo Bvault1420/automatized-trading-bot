@@ -27,13 +27,18 @@ export function GamePlayer({ gameId, title, thumbnailUrl, active, immediate = fa
   const recorded = useRef(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  // Reset when the card scrolls out of view (state adjustment during render, no extra effect pass).
+  const [prevActive, setPrevActive] = useState(active);
+  if (active !== prevActive) {
+    setPrevActive(active);
     if (!active) {
       setPlaying(immediate);
       setLoaded(false);
-      recorded.current = false;
     }
-  }, [active, immediate]);
+  }
+  useEffect(() => {
+    if (!active) recorded.current = false;
+  }, [active]);
 
   useEffect(() => {
     onPlayingChange?.(playing);

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { addComment, deleteComment, listComments } from "@/actions/social";
 import { LIMITS } from "@/lib/config";
 import type { Comment } from "@/lib/types";
@@ -33,15 +33,18 @@ export function CommentsSheet({ open, onClose, gameId, gameAuthorId, viewerId, i
   const toast = useToast();
   const requireAuth = useRequireAuth(isLoggedIn);
 
-  const load = useCallback(async () => {
-    const res = await listComments(gameId);
-    if (res.ok) setComments(res.data ?? []);
-    else toast(res.error, "error");
-  }, [gameId, toast]);
-
   useEffect(() => {
-    if (open && comments === null) void load();
-  }, [open, comments, load]);
+    if (!open || comments !== null) return;
+    let cancelled = false;
+    listComments(gameId).then((res) => {
+      if (cancelled) return;
+      if (res.ok) setComments(res.data ?? []);
+      else toast(res.error, "error");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, comments, gameId, toast]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
