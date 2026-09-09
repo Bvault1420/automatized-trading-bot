@@ -8,34 +8,39 @@ const supabaseHost = (() => {
   }
 })();
 
-const isDev = process.env.NODE_ENV === "development";
+function securityHeaders(): { key: string; value: string }[] {
+  const isDev = process.env.NODE_ENV === "development";
+  // Only enable HSTS / upgrade-insecure-requests on a real https production URL (not localhost).
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  const siteIsHttps =
+    siteUrl.startsWith("https://") && !siteUrl.includes("localhost") && !siteUrl.includes("127.0.0.1");
 
-/** CSP für die App selbst (Spiele bekommen ihre eigene, strengere CSP in /embed/…). */
-const appCsp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
-  `connect-src 'self' ${supabaseHost} ${supabaseHost.replace(/^https/, "wss")}`.trim(),
-  "frame-src 'self'",
-  "worker-src 'self' blob:",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  ...(isDev ? [] : ["upgrade-insecure-requests"]),
-].join("; ");
+  const appCsp = [
+    "default-src 'self'",
+    `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    `connect-src 'self' ${supabaseHost} ${supabaseHost.replace(/^https/, "wss")}`.trim(),
+    "frame-src 'self'",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    ...(siteIsHttps ? ["upgrade-insecure-requests"] : []),
+  ].join("; ");
 
-const securityHeaders = [
-  { key: "Content-Security-Policy", value: appCsp },
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()" },
-  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-];
+  return [
+    { key: "Content-Security-Policy", value: appCsp },
+    { key: "X-Content-Type-Options", value: "nosniff" },
+    { key: "X-Frame-Options", value: "DENY" },
+    { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+    { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()" },
+    ...(siteIsHttps ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }] : []),
+    { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  ];
+}
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
@@ -45,7 +50,7 @@ const nextConfig: NextConfig = {
       {
         // Spiel-Auslieferung setzt eigene Header in der Route
         source: "/((?!embed/).*)",
-        headers: securityHeaders,
+        headers: securityHeaders(),
       },
     ];
   },

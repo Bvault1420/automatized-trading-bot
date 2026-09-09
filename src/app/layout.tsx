@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { APP_DESCRIPTION, APP_NAME, SITE_URL } from "@/lib/config";
+import { Suspense } from "react";
+import { AuthHashHandler } from "@/components/auth/auth-hash-handler";
 import { ToastProvider } from "@/components/ui/toast";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -31,7 +33,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="de" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-bg text-fg">
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <Suspense fallback={null}>
+            <AuthHashHandler />
+          </Suspense>
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

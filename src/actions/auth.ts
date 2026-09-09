@@ -1,20 +1,11 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { SITE_URL } from "@/lib/config";
+import { authCallbackUrl } from "@/lib/auth-redirect";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types";
 import { emailSchema, firstError, loginSchema, passwordSchema, signupSchema, usernameSchema } from "@/lib/validation";
-
-async function origin(): Promise<string> {
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? (host?.startsWith("localhost") ? "http" : "https");
-  if (!host) return SITE_URL;
-  return `${proto}://${host}`;
-}
 
 function safeNextPath(next: unknown): string {
   if (typeof next !== "string") return "/";
@@ -58,7 +49,7 @@ export async function signUp(_prev: ActionResult | null, formData: FormData): Pr
     email,
     password,
     options: {
-      emailRedirectTo: `${await origin()}/auth/callback`,
+      emailRedirectTo: authCallbackUrl(),
       data: {
         username,
         display_name: displayName || username,
@@ -93,7 +84,7 @@ export async function signInWithOAuth(provider: "google" | "github", next?: stri
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: `${await origin()}/auth/callback?next=${encodeURIComponent(safeNextPath(next))}`,
+      redirectTo: `${authCallbackUrl()}?next=${encodeURIComponent(safeNextPath(next))}`,
     },
   });
   if (error || !data.url) return { ok: false, error: error ? friendlyAuthError(error.message) : "Anmeldung fehlgeschlagen." };
@@ -111,7 +102,7 @@ export async function requestPasswordReset(_prev: ActionResult | null, formData:
   if (!parsed.success) return { ok: false, error: firstError(parsed.error).message, field: "email" };
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(parsed.data, {
-    redirectTo: `${await origin()}/auth/callback?next=${encodeURIComponent("/reset-password")}`,
+    redirectTo: `${authCallbackUrl()}?next=${encodeURIComponent("/reset-password")}`,
   });
   if (error) return { ok: false, error: friendlyAuthError(error.message) };
   return { ok: true };
@@ -128,6 +119,19 @@ export async function updatePassword(_prev: ActionResult | null, formData: FormD
   }
   const supabase = await createClient();
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
+  if (error) return { ok: false, error: friendlyAuthError(error.message) };
+  return { ok: true };
+}
+
+export async function resendSignupConfirmation(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  const parsed = emailSchema.safeParse(formData.get("email"));
+  if (!parsed.success) return { ok: false, error: firstError(parsed.error).message, field: "email" };
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email: parsed.data,
+    options: { emailRedirectTo: authCallbackUrl() },
+  });
   if (error) return { ok: false, error: friendlyAuthError(error.message) };
   return { ok: true };
 }
