@@ -30,14 +30,9 @@ Der Bot und die Website laufen **unabhängig vom Browser**. Firefox und Chrome, 
 npm run localhost
 ```
 
-Dann:
+Dann in **Firefox oder Chrome auf deinem PC und Handy** diese HTTPS-Adresse öffnen (nicht `localhost` – das geht nur, wenn der Bot auf genau diesem Gerät läuft):
 
-| Gerät | Adresse |
-| --- | --- |
-| PC (Firefox / Chrome) | http://localhost:8787 |
-| Handy (gleiches WLAN) | die LAN-IP aus dem Dashboard, Port **8787** |
-
-Am Handy **nicht** `localhost` eintippen – das ist das Telefon selbst. Die Adresse steht oben im Dashboard unter „Handy“. Zum Home-Bildschirm hinzufügen geht über das Browser-Menü (PWA).
+Die öffentliche Adresse steht nach `npm run localhost` oben im Dashboard unter **Internet**. `localhost:8787` auf einem anderen Computer zeigt „Verbindung fehlgeschlagen“.
 
 ```bash
 # gleichwertig 24/7:

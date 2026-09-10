@@ -15,7 +15,7 @@ export const api = {
     fetch('/api/live-arm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ armed }) }).then(parse),
   resetPaper: () => fetch('/api/reset-paper', { method: 'POST' }).then(parse),
   access: () =>
-    fetch('/api/access').then((r) => r.json() as Promise<{ port: number; pc: string[]; phone: string[]; hint: string }>),
+    fetch('/api/access').then((r) => r.json() as Promise<{ port: number; pc: string[]; phone: string[]; public?: string[]; hint: string }>),
   settings: (patch: Record<string, unknown>) =>
     fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }).then((r) => r.json()),
 };

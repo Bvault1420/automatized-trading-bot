@@ -13,6 +13,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Copy,
+  Globe,
   Mail,
   Monitor,
   Pause,
@@ -31,7 +32,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [email, setEmail] = useState('');
-  const [access, setAccess] = useState<{ pc: string[]; phone: string[]; hint: string } | null>(null);
+  const [access, setAccess] = useState<{ pc: string[]; phone: string[]; public?: string[]; hint: string } | null>(null);
 
   useEffect(() => {
     if (state?.settings.alertEmail) setEmail(state.settings.alertEmail);
@@ -120,7 +121,15 @@ export default function App() {
             Dieser Browser: {typeof window !== 'undefined' ? window.location.origin : ''}
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <UrlList icon={<Monitor className="h-4 w-4 text-gold" />} title="PC · Firefox / Chrome" urls={access.pc} onCopy={notify} />
+            {(access.public ?? []).length > 0 && (
+              <UrlList
+                icon={<Globe className="h-4 w-4 text-gold" />}
+                title="Firefox / Chrome / Handy (Internet)"
+                urls={access.public ?? []}
+                onCopy={notify}
+              />
+            )}
+            <UrlList icon={<Monitor className="h-4 w-4 text-gold" />} title="Nur auf diesem Rechner" urls={access.pc} onCopy={notify} />
             <UrlList
               icon={<Smartphone className="h-4 w-4 text-gold" />}
               title="Handy · gleiches WLAN"
