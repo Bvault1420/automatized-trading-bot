@@ -1,0 +1,40 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink: #e8e4d9;
+  --color-muted: #8b8678;
+  --color-line: #2a261c;
+  --color-gold: #c6a36a;
+  --color-gold-2: #e2c48a;
+  --color-up: #5ee0a0;
+  --color-down: #ff7a86;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(198, 163, 106, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(60, 90, 80, 0.16), transparent 50%),
+    #0b0c0a;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+.panel {
+  border: 1px solid var(--color-line);
+  background: rgba(16, 17, 14, 0.78);
+  border-radius: 18px;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
