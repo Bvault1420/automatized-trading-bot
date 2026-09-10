@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -28,6 +28,10 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [email, setEmail] = useState('');
+
+  useEffect(() => {
+    if (state?.settings.alertEmail) setEmail(state.settings.alertEmail);
+  }, [state?.settings.alertEmail]);
 
   const notify = (msg: string) => {
     setToast(msg);
@@ -79,13 +83,14 @@ export default function App() {
             Demo startet bei {money(settings.paperStartEur)}.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <ModeChip
             mode={status.mode}
             liveReady={state.live.ready}
             blockers={state.live.blockers}
             disabled={busy}
             onMode={(m) => void run(() => api.setMode(m))}
+            onBlocked={(msg) => notify(msg)}
           />
           {status.running ? (
             <button className="btn-ghost" disabled={busy} onClick={() => void run(() => api.stop())}>
@@ -192,12 +197,16 @@ export default function App() {
                       {c.side === 'long' ? 'Long' : 'Short'} · {strategyName[c.strategy]}
                     </span>
                   </div>
-                  <span className={`text-xs ${c.blocked ? 'text-down' : 'text-gold'}`}>Q {c.quality}</span>
+                  <span className={`text-xs ${c.blocked ? 'text-muted' : 'text-gold'}`}>
+                    {c.blocked ? 'Wartet' : `Q ${c.quality}`}
+                  </span>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-muted">{c.thesis}</p>
-                <p className="mt-2 font-mono text-[11px] text-ink/80">
-                  SL {n2(c.stopLoss)} · TP1 {n2(c.tp1)} · TP2 {n2(c.tp2)} · R:R {n2(c.rewardToRisk)}
-                </p>
+                {!c.blocked && (
+                  <p className="mt-2 font-mono text-[11px] text-ink/80">
+                    SL {n2(c.stopLoss)} · TP1 {n2(c.tp1)} · TP2 {n2(c.tp2)} · R:R {n2(c.rewardToRisk)}
+                  </p>
+                )}
                 {c.blocked && <p className="mt-1 text-[11px] text-down">{c.blocked}</p>}
               </div>
             ))}
@@ -421,12 +430,14 @@ function ModeChip({
   blockers,
   disabled,
   onMode,
+  onBlocked,
 }: {
   mode: TradingMode;
   liveReady: boolean;
   blockers: string[];
   disabled: boolean;
   onMode: (m: TradingMode) => void;
+  onBlocked: (msg: string) => void;
 }) {
   return (
     <div className="flex overflow-hidden rounded-xl border border-line">
@@ -442,7 +453,7 @@ function ModeChip({
         disabled={disabled}
         onClick={() => {
           if (!liveReady) {
-            alert(`Live noch nicht bereit:\n${blockers.join('\n') || 'Bitte in der UI scharf schalten und API-Schlüssel setzen.'}`);
+            onBlocked(`Live noch nicht bereit: ${blockers.join(' · ') || 'API-Schlüssel in .env setzen'}`);
             return;
           }
           if (confirm('Echtgeld-Modus aktivieren? Der Bot nutzt dieselben Schutzregeln, aber echtes Kapital.')) onMode('live');
