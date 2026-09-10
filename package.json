@@ -9,6 +9,7 @@
     "build": "npm run build -w server && npm run build -w web",
     "start": "npm run start -w server",
     "start:always": "bash scripts/always-on.sh",
+    "localhost": "bash scripts/localhost.sh",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
     "test": "npm run test -w server"
   },

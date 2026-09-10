@@ -2,12 +2,17 @@ import express from 'express';
 import { engine } from '../trading/engine.js';
 import { db } from '../store/db.js';
 import { config } from '../config.js';
+import { accessInfo } from '../util/access.js';
 
 export function apiRouter(): express.Router {
   const r = express.Router();
 
   r.get('/health', (_req, res) => {
     res.json({ ok: true, service: 'aegis', ts: Date.now() });
+  });
+
+  r.get('/access', (_req, res) => {
+    res.json(accessInfo());
   });
 
   r.get('/state', (_req, res) => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Area,
   AreaChart,
@@ -12,11 +12,14 @@ import {
   Activity,
   ArrowDownRight,
   ArrowUpRight,
+  Copy,
   Mail,
+  Monitor,
   Pause,
   Play,
   RefreshCw,
   Shield,
+  Smartphone,
 } from 'lucide-react';
 import { api } from './lib/api';
 import { money, n2, pct, regimeName, signedMoney, strategyName, timeAgo, when } from './lib/format';
@@ -28,10 +31,15 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [email, setEmail] = useState('');
+  const [access, setAccess] = useState<{ pc: string[]; phone: string[]; hint: string } | null>(null);
 
   useEffect(() => {
     if (state?.settings.alertEmail) setEmail(state.settings.alertEmail);
   }, [state?.settings.alertEmail]);
+
+  useEffect(() => {
+    void api.access().then(setAccess).catch(() => {});
+  }, []);
 
   const notify = (msg: string) => {
     setToast(msg);
@@ -103,6 +111,26 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {access && (
+        <section className="panel mb-6 p-4">
+          <h2 className="mb-2 text-sm font-medium">Website – immer erreichbar</h2>
+          <p className="mb-3 text-xs text-muted">{access.hint}</p>
+          <p className="mb-3 font-mono text-xs text-gold">
+            Dieser Browser: {typeof window !== 'undefined' ? window.location.origin : ''}
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <UrlList icon={<Monitor className="h-4 w-4 text-gold" />} title="PC · Firefox / Chrome" urls={access.pc} onCopy={notify} />
+            <UrlList
+              icon={<Smartphone className="h-4 w-4 text-gold" />}
+              title="Handy · gleiches WLAN"
+              urls={access.phone.length ? access.phone : ['Sobald der PC im WLAN ist, erscheint hier die IP']}
+              onCopy={notify}
+              copyable={access.phone.length > 0}
+            />
+          </div>
+        </section>
+      )}
 
       <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Equity (Paper)" value={money(portfolio.equityEur)} sub={`Cash ${money(portfolio.cashEur)}`} />
@@ -461,6 +489,50 @@ function ModeChip({
       >
         Live
       </button>
+    </div>
+  );
+}
+
+function UrlList({
+  icon,
+  title,
+  urls,
+  onCopy,
+  copyable = true,
+}: {
+  icon: ReactNode;
+  title: string;
+  urls: string[];
+  onCopy: (msg: string) => void;
+  copyable?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-line p-3">
+      <p className="mb-2 flex items-center gap-2 text-xs font-medium">
+        {icon}
+        {title}
+      </p>
+      <ul className="space-y-1">
+        {urls.map((u) => (
+          <li key={u} className="flex items-center justify-between gap-2">
+            <span className="num break-all text-xs text-ink">{u}</span>
+            {copyable && u.startsWith('http') && (
+              <button
+                type="button"
+                className="btn-ghost !min-h-8 !px-2"
+                onClick={() => {
+                  void navigator.clipboard.writeText(u).then(
+                    () => onCopy(`Kopiert: ${u}`),
+                    () => onCopy(u),
+                  );
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

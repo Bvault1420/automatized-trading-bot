@@ -9,9 +9,11 @@ import { apiRouter } from './api/routes.js';
 import { attachWs } from './api/ws.js';
 import { engine } from './trading/engine.js';
 import { createLogger } from './util/logger.js';
+import { formatListenLog } from './util/access.js';
 
 const log = createLogger('http');
 const app = express();
+app.set('trust proxy', true);
 
 app.use(
   cors({
@@ -36,6 +38,7 @@ attachWs(server);
 
 server.listen(config.port, config.bindHost, () => {
   log.success(`Aegis lauscht auf http://${config.bindHost}:${config.port}`);
+  log.success(formatListenLog());
   engine.bootstrap();
 });
 

@@ -22,7 +22,28 @@ npm install
 npm run dev
 ```
 
-Dashboard: Vite-URL (Port 5173) oder in Produktion Port **8787**.
+## Website öffnen (PC + Handy, immer)
+
+Der Bot und die Website laufen **unabhängig vom Browser**. Firefox und Chrome, PC und Handy.
+
+```bash
+npm run localhost
+```
+
+Dann:
+
+| Gerät | Adresse |
+| --- | --- |
+| PC (Firefox / Chrome) | http://localhost:8787 |
+| Handy (gleiches WLAN) | die LAN-IP aus dem Dashboard, Port **8787** |
+
+Am Handy **nicht** `localhost` eintippen – das ist das Telefon selbst. Die Adresse steht oben im Dashboard unter „Handy“. Zum Home-Bildschirm hinzufügen geht über das Browser-Menü (PWA).
+
+```bash
+# gleichwertig 24/7:
+npm run start:always
+docker compose up -d --build
+```
 
 ```bash
 npm run build
