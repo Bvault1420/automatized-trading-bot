@@ -80,13 +80,13 @@ class Engine {
   dashboard(): DashboardState {
     const mode = db.data.settings.tradingMode;
     const open = this.openPositions();
-    const mtm = open.reduce((a, p) => a + this.mtmEur(p), 0);
+    const held = open.reduce((a, p) => a + this.heldEur(p), 0);
     const account = this.account();
     return {
       status: this.status(),
       settings: db.data.settings,
       rules: db.data.rules,
-      portfolio: portfolioFrom(mode, account, open, mtm),
+      portfolio: portfolioFrom(mode, account, open, held),
       positions: open,
       trades: this.trades().slice(-80).reverse(),
       candidates: this.candidates.slice(0, 12),
@@ -193,11 +193,11 @@ class Engine {
     return cs.at(-1)?.c;
   }
 
-  private mtmEur(p: Position): number {
-    const px = this.lastQuote(p.instrumentId);
-    if (!px) return 0;
-    const usdt = markToMarket(p.side, p.entry, px, p.remainingQty);
-    return this.quoteToEur(p.instrumentId, usdt + p.entry * p.remainingQty) - this.quoteToEur(p.instrumentId, p.entry * p.remainingQty);
+  /** Cash in der Position inkl. unrealisiertem PnL (für Equity). */
+  private heldEur(p: Position): number {
+    const px = this.lastQuote(p.instrumentId) ?? p.entry;
+    const quotePnl = markToMarket(p.side, p.entry, px, p.remainingQty);
+    return this.quoteToEur(p.instrumentId, p.entry * p.remainingQty + quotePnl);
   }
 
   private async tickSafe(): Promise<void> {
@@ -241,8 +241,8 @@ class Engine {
           acc.entriesDayStamp = stamp;
           acc.entriesToday = 0;
           const open = d.positions.filter((p) => p.mode === (key === 'paper' ? 'paper' : 'live'));
-          const mtm = open.reduce((a, p) => a + this.mtmEur(p), 0);
-          acc.dayStartEquityEur = acc.cashEur + mtm;
+          const held = open.reduce((a, p) => a + this.heldEur(p), 0);
+          acc.dayStartEquityEur = acc.cashEur + held;
           acc.dayStartedAt = Date.now();
         }
       }
@@ -410,7 +410,7 @@ class Engine {
     const mode = db.data.settings.tradingMode;
     const account = this.account();
     const open = this.openPositions();
-    const equity = account.cashEur + open.reduce((a, p) => a + this.mtmEur(p), 0);
+    const equity = account.cashEur + open.reduce((a, p) => a + this.heldEur(p), 0);
     const global = checkGlobalRisk({
       rules: db.data.rules,
       account,
@@ -680,7 +680,7 @@ class Engine {
     }
 
     const account = this.account();
-    const equity = account.cashEur + open.reduce((a, p) => a + this.mtmEur(p), 0);
+    const equity = account.cashEur + open.reduce((a, p) => a + this.heldEur(p), 0);
     const dayPnlPct = account.dayStartEquityEur
       ? ((equity - account.dayStartEquityEur) / account.dayStartEquityEur) * 100
       : 0;
