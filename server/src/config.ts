@@ -31,6 +31,7 @@ export const config = {
     key: process.env.BINANCE_API_KEY || '',
     secret: process.env.BINANCE_API_SECRET || '',
     baseUrl: process.env.BINANCE_BASE_URL || 'https://api.binance.com',
+    dataUrl: process.env.BINANCE_DATA_URL || 'https://data-api.binance.vision',
   },
   bybit: {
     baseUrl: process.env.BYBIT_BASE_URL || 'https://api.bybit.com',

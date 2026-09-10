@@ -7,6 +7,7 @@ import { UNIVERSE, instrumentById } from '../market/universe.js';
 import { allSnapshots, getCandles, lastPriceEur, lastVenue, refreshUniverse, usSessionOpen } from '../market/feed.js';
 import { detectRegime } from '../market/regime.js';
 import { usdToEur, usdtToEur } from '../market/fx.js';
+import { adx, closes, lastValid, rsi } from '../market/indicators.js';
 import { collectSignals } from '../strategy/signals.js';
 import { buildPlan, pickBias } from '../strategy/plan.js';
 import { checkGlobalRisk, consecutiveLosses, portfolioFrom } from './risk.js';
@@ -363,6 +364,46 @@ class Engine {
     }
   }
 
+  private watchlist(allowStocks: boolean, open: Position[]): Candidate[] {
+    const rows: Candidate[] = [];
+    for (const inst of UNIVERSE) {
+      if (inst.assetClass === 'crypto' && !db.data.settings.allowCrypto) continue;
+      if (inst.assetClass !== 'crypto' && !allowStocks) continue;
+      if (open.some((p) => p.instrumentId === inst.id)) continue;
+      const cs = getCandles(inst.id);
+      const px = cs.at(-1)?.c;
+      if (!px || cs.length < 30) continue;
+      const r = lastValid(rsi(closes(cs), 14));
+      const a = lastValid(adx(cs, 14));
+      if (!Number.isFinite(r)) continue;
+      const stretch = Math.abs(50 - r);
+      rows.push({
+        instrumentId: inst.id,
+        display: inst.display,
+        venue: lastVenue(inst.id),
+        strategy: pickBias(this.regime),
+        regime: this.regime,
+        side: r < 50 ? 'long' : 'short',
+        thesis: `${inst.display} wird beobachtet. RSI ${r.toFixed(1)}, ADX ${Number.isFinite(a) ? a.toFixed(0) : '–'}. Noch kein vollständiger Plan – kein Trade.`,
+        invalidation: 'Kein Einstieg ohne SL/TP1/TP2',
+        entry: px,
+        stopLoss: r < 50 ? px * 0.988 : px * 1.012,
+        tp1: r < 50 ? px * 1.013 : px * 0.987,
+        tp2: r < 50 ? px * 1.026 : px * 0.974,
+        runnerTrailPct: 0.008,
+        rewardToRisk: 2,
+        feePct: 0.0028,
+        feeEur: 0,
+        riskEur: 0,
+        notionalEur: 0,
+        quality: Math.round(40 + stretch),
+        reasons: [`RSI ${r.toFixed(1)}`],
+        blocked: `Wartet auf Setup (Qualitätsschwelle ${db.data.rules.minQuality})`,
+      });
+    }
+    return rows.sort((a, b) => b.quality - a.quality).slice(0, 8);
+  }
+
   private async scanEntries(): Promise<void> {
     this.lastScanAt = Date.now();
     const mode = db.data.settings.tradingMode;
@@ -420,7 +461,11 @@ class Engine {
         if (c.instrumentId !== top.instrumentId) c.blocked = c.blocked ?? 'High-Conviction: anderes Setup klar besser';
       }
     }
-    this.candidates = found;
+    this.candidates = found.length ? found : this.watchlist(allowStocks, open);
+
+    if (!db.data.selfTest && getCandles('BTCUSDT').length > 120) {
+      void this.selfTestSafe();
+    }
 
     if (!global.allowed) {
       log.info(`Kein Einstieg: ${global.reason}`);

@@ -11,7 +11,7 @@ export async function refreshEurUsd(): Promise<number> {
   if (Date.now() - last < 60_000 && eurUsd) return eurUsd;
   try {
     const rows = (await getJson(
-      `${config.binance.baseUrl}/api/v3/klines?symbol=EURUSDT&interval=1h&limit=2`,
+      `${config.binance.dataUrl}/api/v3/klines?symbol=EURUSDT&interval=1h&limit=2`,
     )) as number[][];
     const px = Number(rows.at(-1)?.[4]);
     if (px > 0) {

@@ -26,50 +26,91 @@ export function lastVenue(id: string): VenueId {
 export async function refreshUniverse(opts: { crypto: boolean; stocks: boolean }): Promise<void> {
   await refreshEurUsd();
   const list = UNIVERSE.filter((i) => (i.assetClass === 'crypto' ? opts.crypto : opts.stocks));
-  for (const inst of list) {
+  const jobs = list.map((inst) => async () => {
     try {
       if (inst.assetClass === 'crypto') await refreshCrypto(inst);
       else if (usSessionOpen()) await refreshYahoo(inst);
     } catch (err) {
       log.warn(`${inst.id}: ${(err as Error).message}`);
     }
+  });
+  await pool(jobs, 5);
+}
+
+async function pool(jobs: Array<() => Promise<void>>, n: number): Promise<void> {
+  let i = 0;
+  async function worker() {
+    while (i < jobs.length) {
+      const job = jobs[i++]!;
+      await job();
+    }
   }
+  await Promise.all(Array.from({ length: Math.min(n, jobs.length) }, () => worker()));
+}
+
+function remember(inst: Instrument, cs: Candle[], venue: VenueId): boolean {
+  if (!cs.length) return false;
+  candles.set(inst.id, cs);
+  prices.set(inst.id, { venue, priceEur: usdtToEur(cs[cs.length - 1]!.c), at: Date.now() });
+  return true;
 }
 
 async function refreshCrypto(inst: Instrument): Promise<void> {
   const symbol = inst.binance ?? inst.id;
-  try {
-    const raw = await getJson(
-      `${config.binance.baseUrl}/api/v3/klines?symbol=${symbol}&interval=15m&limit=200`,
-    );
-    const cs = candlesFromBinance(raw);
-    if (cs.length) {
-      candles.set(inst.id, cs);
-      const px = cs[cs.length - 1]!.c;
-      prices.set(inst.id, { venue: 'binance', priceEur: usdtToEur(px), at: Date.now() });
-      return;
+  const sources: Array<() => Promise<boolean>> = [
+    async () => remember(inst, candlesFromBinance(await getJson(`${config.binance.dataUrl}/api/v3/klines?symbol=${symbol}&interval=15m&limit=200`)), 'binance'),
+    async () => remember(inst, candlesFromBinance(await getJson(`${config.binance.baseUrl}/api/v3/klines?symbol=${symbol}&interval=15m&limit=200`)), 'binance'),
+    async () => remember(inst, await krakenCandles(inst), 'kraken'),
+    async () => remember(inst, await coinbaseCandles(inst), 'coinbase'),
+  ];
+  for (const src of sources) {
+    try {
+      if (await src()) return;
+    } catch {
+      /* nächste Quelle */
     }
-  } catch {
-    /* fallback Bybit */
   }
-  const raw = await getJson(
-    `${config.bybit.baseUrl}/v5/market/kline?category=spot&symbol=${inst.bybit ?? inst.id}&interval=15&limit=200`,
-  );
-  const list = (raw as { result?: { list?: string[][] } }).result?.list ?? [];
-  const cs: Candle[] = list
+  log.warn(`${inst.id}: keine Krypto-Quelle erreichbar`);
+}
+
+function krakenPair(inst: Instrument): string {
+  const base = inst.base === 'BTC' ? 'XBT' : inst.base;
+  return `${base}USDT`;
+}
+
+async function krakenCandles(inst: Instrument): Promise<Candle[]> {
+  const raw = (await getJson(`https://api.kraken.com/0/public/OHLC?pair=${krakenPair(inst)}&interval=15`)) as {
+    error?: string[];
+    result?: Record<string, unknown>;
+  };
+  if (raw.error?.length) throw new Error(raw.error.join(','));
+  const rows = Object.entries(raw.result ?? {}).find(([k]) => k !== 'last')?.[1];
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => ({
+    t: Number(row[0]) * 1000,
+    o: Number(row[1]),
+    h: Number(row[2]),
+    l: Number(row[3]),
+    c: Number(row[4]),
+    v: Number(row[6]),
+  }));
+}
+
+async function coinbaseCandles(inst: Instrument): Promise<Candle[]> {
+  const raw = (await getJson(
+    `https://api.exchange.coinbase.com/products/${inst.base}-USDT/candles?granularity=900`,
+  )) as number[][];
+  if (!Array.isArray(raw)) return [];
+  return raw
     .map((row) => ({
-      t: Number(row[0]),
-      o: Number(row[1]),
+      t: Number(row[0]) * 1000,
+      l: Number(row[1]),
       h: Number(row[2]),
-      l: Number(row[3]),
+      o: Number(row[3]),
       c: Number(row[4]),
       v: Number(row[5]),
     }))
     .sort((a, b) => a.t - b.t);
-  if (cs.length) {
-    candles.set(inst.id, cs);
-    prices.set(inst.id, { venue: 'bybit', priceEur: usdtToEur(cs[cs.length - 1]!.c), at: Date.now() });
-  }
 }
 
 async function refreshYahoo(inst: Instrument): Promise<void> {
