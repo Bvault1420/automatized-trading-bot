@@ -66,6 +66,19 @@ export function apiRouter(): express.Router {
     res.json(engine.resetPaper());
   });
 
+  r.post('/positions/open', async (req, res) => {
+    res.json(await engine.manualOpen(req.body ?? {}));
+  });
+
+  r.post('/positions/close', async (req, res) => {
+    const id = typeof req.body?.id === 'string' ? req.body.id : '';
+    if (!id) {
+      res.status(400).json({ ok: false, message: 'Positions-ID fehlt' });
+      return;
+    }
+    res.json(await engine.manualClose(id));
+  });
+
   r.get('/rules', (_req, res) => {
     res.json({ rules: db.data.rules, changes: db.data.ruleChanges.slice(-20) });
   });

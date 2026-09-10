@@ -18,4 +18,16 @@ export const api = {
     fetch('/api/access').then((r) => r.json() as Promise<{ port: number; pc: string[]; phone: string[]; public?: string[]; hint: string }>),
   settings: (patch: Record<string, unknown>) =>
     fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }).then((r) => r.json()),
+  openPosition: (body: { instrumentId: string; side: 'long' | 'short'; notionalEur?: number }) =>
+    fetch('/api/positions/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(parse),
+  closePosition: (id: string) =>
+    fetch('/api/positions/close', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }).then(parse),
 };

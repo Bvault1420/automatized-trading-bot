@@ -1,4 +1,4 @@
-import { config } from '../config.js';
+import { config, HARD_CAPS } from '../config.js';
 import { db } from '../store/db.js';
 import { bus } from '../util/bus.js';
 import { createLogger, recentLogs } from '../util/logger.js';
@@ -7,9 +7,9 @@ import { UNIVERSE, instrumentById } from '../market/universe.js';
 import { allSnapshots, getCandles, lastPriceEur, lastVenue, refreshUniverse, usSessionOpen } from '../market/feed.js';
 import { detectRegime } from '../market/regime.js';
 import { usdToEur, usdtToEur } from '../market/fx.js';
-import { adx, closes, lastValid, rsi } from '../market/indicators.js';
+import { adx, atr, closes, lastValid, rsi } from '../market/indicators.js';
 import { collectSignals } from '../strategy/signals.js';
-import { buildPlan, pickBias } from '../strategy/plan.js';
+import { buildManualPlan, buildPlan, pickBias } from '../strategy/plan.js';
 import { checkGlobalRisk, consecutiveLosses, portfolioFrom } from './risk.js';
 import { sizePosition } from './sizing.js';
 import { decideExit, markToMarket, trailFrom } from './exits.js';
@@ -24,6 +24,7 @@ import type {
   DashboardState,
   Position,
   Regime,
+  Side,
   Trade,
   TradingMode,
 } from '../types.js';
@@ -279,7 +280,7 @@ class Engine {
     pos: Position,
     px: number,
     qty: number,
-    kind: Exclude<Trade['action'], 'open' | 'manual' | 'halt'> | 'stop' | 'tp1' | 'tp2' | 'trail' | 'time',
+    kind: Exclude<Trade['action'], 'open' | 'halt'>,
     note: string,
   ): Promise<void> {
     qty = Math.min(qty, pos.remainingQty);
@@ -520,6 +521,7 @@ class Engine {
     const pos: Position = {
       id: uid('pos'),
       mode,
+      source: 'auto',
       instrumentId: pick.instrumentId,
       display: pick.display,
       assetClass: instrumentById(pick.instrumentId)?.assetClass ?? 'crypto',
@@ -632,6 +634,185 @@ class Engine {
       'Tagesbericht',
       `Equity ${p.equityEur.toFixed(2)} € · Tag ${p.dayPnlEur.toFixed(2)} € (${p.dayPnlPct.toFixed(2)} %) · Gesamt ${p.totalPnlPct.toFixed(2)} %.\nOffene Positionen: ${this.openPositions().length}.`,
     );
+  }
+
+  async manualOpen(input: {
+    instrumentId?: unknown;
+    side?: unknown;
+    notionalEur?: unknown;
+  }): Promise<{ ok: boolean; message: string }> {
+    const instrumentId = typeof input.instrumentId === 'string' ? input.instrumentId.trim() : '';
+    const side: Side | null = input.side === 'short' ? 'short' : input.side === 'long' ? 'long' : null;
+    if (!instrumentId || !side) {
+      return { ok: false, message: 'Markt und Richtung (Long/Short) angeben' };
+    }
+    const inst = instrumentById(instrumentId);
+    if (!inst) return { ok: false, message: `Unbekanntes Instrument: ${instrumentId}` };
+
+    const mode = db.data.settings.tradingMode;
+    if (mode === 'live') {
+      const blockers = liveBlockers();
+      if (blockers.length) return { ok: false, message: `Live nicht bereit: ${blockers.join(' · ')}` };
+      if (!db.data.settings.liveArmed) return { ok: false, message: 'Live ist nicht scharf geschaltet' };
+      if (inst.assetClass !== 'crypto' || !inst.binance) {
+        return { ok: false, message: 'Live-Orders nur für Krypto über Binance Spot. Aktien/ETFs bleiben Paper.' };
+      }
+      if (side === 'short') {
+        return { ok: false, message: 'Live-Spot kann keine Shorts aus Cash eröffnen. Nutze Paper oder Long.' };
+      }
+    }
+    if (inst.assetClass === 'crypto' && !db.data.settings.allowCrypto) {
+      return { ok: false, message: 'Krypto ist in den Einstellungen aus' };
+    }
+    if (inst.assetClass !== 'crypto' && !db.data.settings.allowStocks) {
+      return { ok: false, message: 'Aktien/ETFs sind in den Einstellungen aus' };
+    }
+    if (side === 'short' && !db.data.settings.allowShorts) {
+      return { ok: false, message: 'Shorts sind in den Einstellungen aus' };
+    }
+
+    const open = this.openPositions();
+    if (open.some((p) => p.instrumentId === inst.id)) {
+      return { ok: false, message: `${inst.display} ist bereits offen – erst schließen` };
+    }
+    if (open.length >= Math.min(db.data.rules.maxOpenPositions, HARD_CAPS.maxOpenPositions)) {
+      return { ok: false, message: 'Maximale Anzahl offener Positionen' };
+    }
+
+    const account = this.account();
+    const equity = account.cashEur + open.reduce((a, p) => a + this.mtmEur(p), 0);
+    const dayPnlPct = account.dayStartEquityEur
+      ? ((equity - account.dayStartEquityEur) / account.dayStartEquityEur) * 100
+      : 0;
+    const dd = account.peakEquityEur ? ((account.peakEquityEur - equity) / account.peakEquityEur) * 100 : 0;
+    if (dayPnlPct <= -Math.abs(db.data.rules.dailyLossLimitPct)) {
+      return { ok: false, message: 'Tagesverlust-Halt – keine neuen Positionen' };
+    }
+    if (dd >= Math.abs(db.data.rules.maxDrawdownPct)) {
+      return { ok: false, message: 'Drawdown-Schutz – keine neuen Positionen' };
+    }
+
+    const cs = getCandles(inst.id);
+    const px = cs.at(-1)?.c;
+    if (!px) return { ok: false, message: `Kein Kurs für ${inst.display} – einen Tick warten` };
+    const atrNow = lastValid(atr(cs, 14));
+    const atrPct = Number.isFinite(atrNow) && px > 0 ? atrNow / px : 0.012;
+    const venue = lastVenue(inst.id);
+    const plan = buildManualPlan({
+      instrument: inst,
+      venue,
+      price: px,
+      regime: this.regime,
+      side,
+      atrPct,
+    });
+
+    const requestedRaw = input.notionalEur;
+    const requested =
+      typeof requestedRaw === 'number' && Number.isFinite(requestedRaw) && requestedRaw > 0
+        ? requestedRaw
+        : typeof requestedRaw === 'string' && requestedRaw.trim()
+          ? Number(requestedRaw)
+          : undefined;
+    const requestedNotional = requested && Number.isFinite(requested) && requested > 0 ? requested : undefined;
+
+    const sized = sizePosition({
+      equityEur: equity,
+      cashEur: account.cashEur,
+      rules: db.data.rules,
+      entry: this.quoteToEur(inst.id, plan.entry),
+      stopLoss: this.quoteToEur(inst.id, plan.stopLoss),
+      side,
+      venue,
+      openCount: open.length,
+      requestedNotionalEur: requestedNotional,
+    });
+    if (!sized.ok) return { ok: false, message: sized.reason };
+
+    plan.notionalEur = sized.notionalEur;
+    plan.feeEur = sized.feeEur;
+    plan.riskEur = sized.riskEur;
+    const qty = sized.notionalEur / this.quoteToEur(inst.id, plan.entry);
+
+    if (mode === 'live' && inst.binance) {
+      const live = await placeBinanceMarket({ symbol: inst.binance, side, quoteUsdt: plan.entry * qty });
+      if (!live.ok) return { ok: false, message: `Live-Order abgelehnt: ${live.message}` };
+    }
+
+    const pos: Position = {
+      id: uid('pos'),
+      mode,
+      source: 'manual',
+      instrumentId: inst.id,
+      display: inst.display,
+      assetClass: inst.assetClass,
+      venue,
+      strategy: plan.strategy,
+      regime: plan.regime,
+      side,
+      status: 'open',
+      qty,
+      entry: plan.entry,
+      remainingQty: qty,
+      stopLoss: plan.stopLoss,
+      tp1: plan.tp1,
+      tp2: plan.tp2,
+      tp1Filled: false,
+      tp2Filled: false,
+      trailPct: plan.runnerTrailPct,
+      highWater: plan.entry,
+      lowWater: plan.entry,
+      openedAt: Date.now(),
+      plan,
+      feesPaidEur: sized.feeEur,
+      realizedEur: 0,
+    };
+
+    db.update((d) => {
+      d.positions.push(pos);
+      const acc = mode === 'live' ? d.live : d.paper;
+      acc.cashEur -= sized.notionalEur + sized.feeEur;
+      acc.entriesToday += 1;
+      d.trades.push({
+        id: uid('tr'),
+        positionId: pos.id,
+        mode,
+        instrumentId: pos.instrumentId,
+        display: pos.display,
+        venue: pos.venue,
+        strategy: pos.strategy,
+        regime: pos.regime,
+        side: pos.side,
+        action: 'open',
+        qty,
+        price: plan.entry,
+        pnlEur: 0,
+        feeEur: sized.feeEur,
+        rMultiple: 0,
+        quality: plan.quality,
+        at: Date.now(),
+        note: plan.thesis,
+      });
+    });
+
+    log.success(
+      `Manuell eröffnet ${inst.display} ${side} @ ${plan.entry} · ${sized.notionalEur.toFixed(2)} € · Bot übernimmt Exits`,
+    );
+    this.emit();
+    return {
+      ok: true,
+      message: `${inst.display} ${side === 'long' ? 'Long' : 'Short'} eröffnet (${mode}). Bot übernimmt SL, TP1, TP2 und Trailing.`,
+    };
+  }
+
+  async manualClose(id: string): Promise<{ ok: boolean; message: string }> {
+    const pos = this.openPositions().find((p) => p.id === id);
+    if (!pos) return { ok: false, message: 'Position nicht gefunden' };
+    const px = this.lastQuote(pos.instrumentId);
+    if (!px) return { ok: false, message: `Kein Kurs für ${pos.display}` };
+    await this.closeSlice(pos, px, pos.remainingQty, 'manual', 'Manuell geschlossen');
+    this.emit();
+    return { ok: true, message: `${pos.display} manuell geschlossen` };
   }
 
   resetPaper(): { ok: boolean; message: string } {

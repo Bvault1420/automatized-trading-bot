@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPlan } from './plan.js';
+import { buildManualPlan, buildPlan } from './plan.js';
 import { FACTORY_RULES } from '../learning/adapt.js';
 import type { Instrument } from '../types.js';
 
@@ -57,5 +57,38 @@ describe('buildPlan', () => {
       rules: FACTORY_RULES,
     });
     assert.equal(plan, null);
+  });
+});
+
+describe('buildManualPlan', () => {
+  it('liefert Long mit SL unter Entry und TP1/TP2 darüber', () => {
+    const plan = buildManualPlan({
+      instrument: btc,
+      venue: 'binance',
+      price: 100,
+      regime: 'range',
+      side: 'long',
+      atrPct: 0.01,
+    });
+    assert.ok(plan.stopLoss < plan.entry);
+    assert.ok(plan.tp1 > plan.entry);
+    assert.ok(plan.tp2 > plan.tp1);
+    assert.ok(plan.thesis.includes('Manuell'));
+    assert.ok(plan.thesis.includes('Bot übernimmt'));
+  });
+
+  it('liefert Short mit SL über Entry und TPs darunter', () => {
+    const plan = buildManualPlan({
+      instrument: btc,
+      venue: 'binance',
+      price: 100,
+      regime: 'trend-down',
+      side: 'short',
+      atrPct: 0.012,
+    });
+    assert.ok(plan.stopLoss > plan.entry);
+    assert.ok(plan.tp1 < plan.entry);
+    assert.ok(plan.tp2 < plan.tp1);
+    assert.equal(plan.side, 'short');
   });
 });

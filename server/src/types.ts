@@ -63,6 +63,7 @@ export interface TradePlan {
 export interface Position {
   id: string;
   mode: TradingMode;
+  source?: 'auto' | 'manual';
   instrumentId: string;
   display: string;
   assetClass: AssetClass;

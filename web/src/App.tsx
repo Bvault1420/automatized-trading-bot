@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Shield,
   Smartphone,
+  X,
 } from 'lucide-react';
 import { api } from './lib/api';
 import { money, n2, pct, regimeName, signedMoney, strategyName, timeAgo, when } from './lib/format';
@@ -33,6 +34,9 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [access, setAccess] = useState<{ pc: string[]; phone: string[]; public?: string[]; hint: string } | null>(null);
+  const [manualId, setManualId] = useState('BTCUSDT');
+  const [manualSide, setManualSide] = useState<'long' | 'short'>('long');
+  const [manualNotional, setManualNotional] = useState('');
 
   useEffect(() => {
     if (state?.settings.alertEmail) setEmail(state.settings.alertEmail);
@@ -41,6 +45,13 @@ export default function App() {
   useEffect(() => {
     void api.access().then(setAccess).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!state?.markets.length) return;
+    if (!state.markets.some((m) => m.instrumentId === manualId)) {
+      setManualId(state.markets[0]!.instrumentId);
+    }
+  }, [state?.markets, manualId]);
 
   const notify = (msg: string) => {
     setToast(msg);
@@ -250,16 +261,92 @@ export default function App() {
           </div>
         </div>
         <div className="panel p-4">
-          <h2 className="mb-3 text-sm font-medium">Offene Positionen</h2>
+          <h2 className="mb-2 text-sm font-medium">Offene Positionen</h2>
+          <p className="mb-3 text-xs text-muted">
+            Manuell öffnen oder schließen – in Paper und Live. Danach übernimmt der Bot SL, TP1, TP2 und Trailing.
+          </p>
+          <form
+            className="mb-4 grid gap-2 sm:grid-cols-[1fr_auto_7rem_auto]"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (status.mode === 'live') {
+                const ok = window.confirm(
+                  'Echtgeld: Position jetzt an der Börse eröffnen? Der Bot übernimmt danach Stop und Take-Profit.',
+                );
+                if (!ok) return;
+              }
+              const n = Number(manualNotional.replace(',', '.'));
+              void run(() =>
+                api.openPosition({
+                  instrumentId: manualId,
+                  side: manualSide,
+                  ...(Number.isFinite(n) && n > 0 ? { notionalEur: n } : {}),
+                }),
+              );
+            }}
+          >
+            <select
+              className="min-h-10 rounded-lg border border-line bg-black/30 px-2 text-sm outline-none focus:border-gold"
+              value={manualId}
+              onChange={(e) => setManualId(e.target.value)}
+            >
+              {(state.markets.length ? state.markets : [{ instrumentId: 'BTCUSDT', display: 'Bitcoin' }]).map((m) => (
+                <option key={m.instrumentId} value={m.instrumentId}>
+                  {m.display}
+                </option>
+              ))}
+            </select>
+            <div className="flex overflow-hidden rounded-lg border border-line">
+              <button
+                type="button"
+                className={`px-3 py-2 text-xs ${manualSide === 'long' ? 'bg-up text-[#0b0c0a]' : 'text-muted'}`}
+                onClick={() => setManualSide('long')}
+              >
+                Long
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-2 text-xs ${manualSide === 'short' ? 'bg-down text-white' : 'text-muted'}`}
+                onClick={() => setManualSide('short')}
+              >
+                Short
+              </button>
+            </div>
+            <input
+              className="min-h-10 rounded-lg border border-line bg-black/30 px-2 text-sm outline-none focus:border-gold"
+              placeholder="€ auto"
+              inputMode="decimal"
+              value={manualNotional}
+              onChange={(e) => setManualNotional(e.target.value)}
+              aria-label="Größe in Euro (leer = Risiko 1 %)"
+            />
+            <button className="btn-gold" disabled={busy} type="submit">
+              Eröffnen
+            </button>
+          </form>
           {state.positions.length === 0 && <p className="text-sm text-muted">Keine offenen Positionen.</p>}
           <div className="space-y-3">
             {state.positions.map((p) => (
               <div key={p.id} className="rounded-xl border border-line p-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">
                     {p.display} {p.side === 'long' ? <ArrowUpRight className="inline h-4 w-4 text-up" /> : <ArrowDownRight className="inline h-4 w-4 text-down" />}
                   </span>
-                  <span className="text-xs text-muted">{strategyName[p.strategy]}</span>
+                  <div className="flex items-center gap-2">
+                    {p.source === 'manual' && <span className="text-[10px] uppercase tracking-wide text-gold">Manuell → Bot</span>}
+                    <span className="text-xs text-muted">{strategyName[p.strategy]}</span>
+                    <button
+                      type="button"
+                      className="btn-ghost !min-h-8 !px-2 text-xs"
+                      disabled={busy}
+                      onClick={() => {
+                        if (status.mode === 'live' && !window.confirm(`${p.display} live schließen?`)) return;
+                        void run(() => api.closePosition(p.id));
+                      }}
+                    >
+                      <X className="h-3.5 w-3.5" /> Schließen
+                    </button>
+                  </div>
                 </div>
                 <p className="mt-2 font-mono text-[11px]">
                   Entry {n2(p.entry)} · SL {n2(p.stopLoss)} · TP1 {n2(p.tp1)}

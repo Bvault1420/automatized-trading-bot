@@ -71,6 +71,59 @@ export function buildPlan(opts: {
   };
 }
 
+/** Manueller Einstieg: immer vollständiger Plan, Bot übernimmt danach die Exits. */
+export function buildManualPlan(opts: {
+  instrument: Instrument;
+  venue: VenueId;
+  price: number;
+  regime: Regime;
+  side: Side;
+  atrPct?: number;
+}): TradePlan {
+  const { instrument, venue, price, regime, side } = opts;
+  const feePct = roundTripCostPct(venue);
+  const atrPct = Number.isFinite(opts.atrPct) && (opts.atrPct ?? 0) > 0 ? opts.atrPct! : 0.012;
+  const slPct = Math.min(0.024, Math.max(0.01, atrPct * 1.35));
+  const stopLoss = side === 'long' ? price * (1 - slPct) : price * (1 + slPct);
+  const risk = Math.abs(price - stopLoss);
+  const tp1R = 1.2;
+  const tp2R = 2.2;
+  const tp1 = side === 'long' ? price + risk * tp1R : price - risk * tp1R;
+  const tp2 = side === 'long' ? price + risk * tp2R : price - risk * tp2R;
+  const strategy = pickBias(regime);
+  const dir = side === 'long' ? 'Long' : 'Short';
+  return {
+    instrumentId: instrument.id,
+    display: instrument.display,
+    venue,
+    strategy,
+    regime,
+    side,
+    thesis: [
+      `Manuell eröffnet: ${instrument.display} ${dir}`,
+      'Bot übernimmt ab jetzt SL, TP1 (40 %), TP2 (40 %) und Trailing-Runner',
+      `SL ${(slPct * 100).toFixed(2)} %, TP1 ${tp1R.toFixed(1)}R, TP2 ${tp2R.toFixed(1)}R`,
+      `Marktphase ${regimeLabel(regime)} · Roundtrip ${(feePct * 100).toFixed(2)} %`,
+    ].join(' · '),
+    invalidation:
+      side === 'long'
+        ? 'Schluss unter Stop – Bot schließt, kein Nachkaufen'
+        : 'Schluss über Stop – Bot schließt, kein Nachverkaufen',
+    entry: price,
+    stopLoss: round(stopLoss, 6),
+    tp1: round(tp1, 6),
+    tp2: round(tp2, 6),
+    runnerTrailPct: Math.max(0.006, slPct * 0.7),
+    rewardToRisk: round(tp2R, 3),
+    feePct,
+    feeEur: 0,
+    riskEur: 0,
+    notionalEur: 0,
+    quality: 88,
+    reasons: ['Manueller Einstieg', 'Vollständiger Plan an Bot übergeben'],
+  };
+}
+
 export function pickBias(regime: Regime): StrategyId {
   if (regime === 'range' || regime === 'risk-off') return 'meanReversion';
   if (regime === 'breakout') return 'breakout';

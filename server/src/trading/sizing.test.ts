@@ -48,4 +48,33 @@ describe('sizePosition', () => {
     });
     assert.equal(r.ok, false);
   });
+
+  it('begrenzt manuelle Wunschgröße auf Cash nach Puffer', () => {
+    const ok = sizePosition({
+      equityEur: 100,
+      cashEur: 100,
+      rules: FACTORY_RULES,
+      entry: 50,
+      stopLoss: 49.4,
+      side: 'long',
+      venue: 'binance',
+      openCount: 0,
+      requestedNotionalEur: 20,
+    });
+    assert.equal(ok.ok, true);
+    assert.ok(ok.notionalEur <= 20 + 1e-6);
+
+    const tooBig = sizePosition({
+      equityEur: 100,
+      cashEur: 100,
+      rules: FACTORY_RULES,
+      entry: 50,
+      stopLoss: 49.4,
+      side: 'long',
+      venue: 'binance',
+      openCount: 0,
+      requestedNotionalEur: 90,
+    });
+    assert.equal(tooBig.ok, false);
+  });
 });

@@ -21,6 +21,7 @@ export interface SizeInput {
   side: Side;
   venue: VenueId;
   openCount: number;
+  requestedNotionalEur?: number;
 }
 
 export interface SizeResult {
@@ -56,6 +57,14 @@ export function sizePosition(input: SizeInput): SizeResult {
   const denom = slPct + rt;
   let notional = riskBudget / denom;
   notional = Math.min(notional, equityEur * HARD_CAPS.maxNotionalPct, usable);
+  if (input.requestedNotionalEur && input.requestedNotionalEur > 0) {
+    if (input.requestedNotionalEur > usable + 1e-9) {
+      return fail(
+        `Gewünschte Größe ${input.requestedNotionalEur.toFixed(2)} € übersteigt verfügbares Cash (${usable.toFixed(2)} € nach Puffer)`,
+      );
+    }
+    notional = Math.min(input.requestedNotionalEur, equityEur * HARD_CAPS.maxNotionalPct, usable);
+  }
   if (input.openCount >= 1) {
     notional = Math.min(notional, usable / Math.max(1, HARD_CAPS.maxOpenPositions - input.openCount + 0.35));
   }

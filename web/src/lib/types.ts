@@ -26,6 +26,7 @@ export interface TradePlan {
 
 export interface Position {
   id: string;
+  source?: 'auto' | 'manual';
   display: string;
   venue: string;
   strategy: StrategyId;
