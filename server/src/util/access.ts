@@ -42,8 +42,8 @@ export function accessInfo(): {
     phone,
     public: pub,
     hint: pub.length
-      ? 'In Firefox, Chrome und am Handy diese HTTPS-Adresse öffnen (nicht localhost auf einem anderen Gerät). Localhost gilt nur auf dem Rechner, auf dem der Bot wirklich läuft.'
-      : 'Am PC in Firefox oder Chrome: http://localhost:8787 – nur wenn der Bot auf DIESEM Rechner läuft. Am Handy die LAN-IP, nicht das Wort localhost.',
+      ? 'HTTPS-Link für Firefox/Chrome/Handy. Nicht localhost auf einem anderen Gerät. Stirbt der Tunnel (Netz-Timeout), startet er automatisch neu – der Link kann sich dann ändern. Aktuelle Adresse steht hier.'
+      : 'Am PC in Firefox oder Chrome: http://localhost:8787 – nur wenn der Bot auf DIESEM Rechner läuft. Am Handy die LAN-IP. Öffentlicher HTTPS-Tunnel startet mit npm run public.',
   };
 }
 

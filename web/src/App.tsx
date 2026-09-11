@@ -126,7 +126,7 @@ export default function App() {
 
       {access && (
         <section className="panel mb-6 p-4">
-          <h2 className="mb-2 text-sm font-medium">Website – immer erreichbar</h2>
+          <h2 className="mb-2 text-sm font-medium">Website öffnen</h2>
           <p className="mb-3 text-xs text-muted">{access.hint}</p>
           <p className="mb-3 font-mono text-xs text-gold">
             Dieser Browser: {typeof window !== 'undefined' ? window.location.origin : ''}

@@ -22,7 +22,7 @@ npm install
 npm run dev
 ```
 
-## Website öffnen (PC + Handy, immer)
+## Website öffnen (PC + Handy)
 
 Der Bot und die Website laufen **unabhängig vom Browser**. Firefox und Chrome, PC und Handy.
 
@@ -30,9 +30,15 @@ Der Bot und die Website laufen **unabhängig vom Browser**. Firefox und Chrome, 
 npm run localhost
 ```
 
-Dann in **Firefox oder Chrome auf deinem PC und Handy** diese HTTPS-Adresse öffnen (nicht `localhost` – das geht nur, wenn der Bot auf genau diesem Gerät läuft):
+Das startet den Bot **und** einen HTTPS-Tunnel-Keeper (`npm run public`). Die aktuelle Internet-Adresse steht im Dashboard und in `data/public-url.txt`.
 
-Die öffentliche Adresse steht nach `npm run localhost` oben im Dashboard unter **Internet**. `localhost:8787` auf einem anderen Computer zeigt „Verbindung fehlgeschlagen“.
+**Wichtig:** Cloudflare-Schnell-Links sind keine feste Domain. Nach einem Netz-Abbruch bekommst du automatisch einen **neuen** Link (der alte löst DNS nicht mehr auf). `localhost:8787` auf einem anderen Computer zeigt „Verbindung fehlgeschlagen“ – das ist normal.
+
+Damit der Bot **wirklich dauerhaft** erreichbar bleibt: auf einem eigenen PC oder VPS `docker compose up -d` (plus `docker compose --profile public up -d` für HTTPS) – nicht nur in einer temporären Cloud-Agent-VM.
+
+```bash
+npm run public   # nur den HTTPS-Keeper, Bot muss schon laufen
+```
 
 ```bash
 # gleichwertig 24/7:

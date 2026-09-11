@@ -10,6 +10,7 @@
     "start": "npm run start -w server",
     "start:always": "bash scripts/always-on.sh",
     "localhost": "bash scripts/localhost.sh",
+    "public": "bash scripts/keep-public.sh",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
     "test": "npm run test -w server"
   },

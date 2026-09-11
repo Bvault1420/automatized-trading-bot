@@ -23,3 +23,14 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+
+  # Optional: docker compose --profile public up -d
+  # Schnell-Tunnel, Hostname steht in den cloudflared-Logs (ändert sich nach Neustart).
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["public"]
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--url", "http://aegis:8787"]
+    depends_on:
+      aegis:
+        condition: service_healthy
