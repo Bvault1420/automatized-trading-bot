@@ -189,7 +189,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .field label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .check { display: flex; align-items: center; gap: 6px; color: var(--muted); }
-.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.actions { display: grid; grid-template-columns: 1fr; gap: 8px; }
 
 .bottom {
   border-top: 1px solid var(--line);

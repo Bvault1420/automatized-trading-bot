@@ -50,7 +50,7 @@ export function MarketList() {
             >
               <div>
                 <b>{m.symbol}</b>
-                <i>{m.kind}</i>
+                <i> {m.kind}</i>
               </div>
               <div className="mono">{fmtPx(m.markPx)}</div>
               <div className={clsx("mono", signedClass(ch))}>{fmtPct(ch)}</div>

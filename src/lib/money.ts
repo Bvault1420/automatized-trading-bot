@@ -48,8 +48,11 @@ export function fmtPct(value: unknown, digits = 2): string {
 
 export function changePct(mark: unknown, prev: unknown): number {
   const p = num(prev);
-  if (!p) return 0;
-  return ((num(mark) - p) / p) * 100;
+  const m = num(mark);
+  if (!p || !m) return 0;
+  const pct = ((m - p) / p) * 100;
+  if (!Number.isFinite(pct) || Math.abs(pct) > 500) return 0;
+  return pct;
 }
 
 export function fmtTime(ms: unknown): string {

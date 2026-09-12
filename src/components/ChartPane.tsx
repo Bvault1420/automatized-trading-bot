@@ -12,8 +12,11 @@ export function ChartPane() {
   const series = useRef<ISeriesApi<"Candlestick"> | null>(null);
 
   useEffect(() => {
-    if (!host.current) return;
-    const chart = createChart(host.current, {
+    const el = host.current;
+    if (!el) return;
+    const chart = createChart(el, {
+      width: el.clientWidth || 640,
+      height: el.clientHeight || 360,
       layout: {
         background: { type: ColorType.Solid, color: "#0d1118" },
         textColor: "#8b97a8",
@@ -26,7 +29,6 @@ export function ChartPane() {
       rightPriceScale: { borderColor: "#223042" },
       timeScale: { borderColor: "#223042", timeVisible: true, secondsVisible: false },
       crosshair: { mode: 0 },
-      autoSize: true,
     });
     const candles = chart.addCandlestickSeries({
       upColor: "#3ee089",
@@ -37,7 +39,16 @@ export function ChartPane() {
     });
     api.current = chart;
     series.current = candles;
+    const ro = new ResizeObserver(() => {
+      if (!host.current) return;
+      chart.applyOptions({
+        width: host.current.clientWidth,
+        height: Math.max(host.current.clientHeight, 220),
+      });
+    });
+    ro.observe(el);
     return () => {
+      ro.disconnect();
       chart.remove();
       api.current = null;
       series.current = null;
