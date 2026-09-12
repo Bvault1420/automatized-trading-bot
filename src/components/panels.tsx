@@ -656,11 +656,27 @@ function AccountPane() {
   );
 }
 
+function takeKey(raw: string): string {
+  return raw.replace(/\s+/g, "").trim();
+}
+
 export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { connect, connecting, network } = useTerminal();
   const [pk, setPk] = useState("");
   const [override, setOverride] = useState("");
   if (!open) return null;
+
+  function applyKey(raw: string) {
+    setPk(takeKey(raw));
+  }
+
+  async function pasteFromClipboard() {
+    try {
+      applyKey(await navigator.clipboard.readText());
+    } catch {
+      /* user can still Ctrl+V into the box */
+    }
+  }
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -674,23 +690,45 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
       >
         <h2>Connect API wallet</h2>
         <p>
-          Use the Hyperliquid API wallet (agent) from Settings → API — the same kind of key as in the
-          screenshot. It can trade for your account and cannot withdraw. Signing stays in this browser.
+          Key aus Hyperliquid Settings → API hier reinkopieren. Nicht abtippen — nur einfügen
+          (Strg+V / Cmd+V). Signing bleibt im Browser.
         </p>
-        <div className="warn">Never paste your main wallet key. Agent keys only. Network: {network}.</div>
+        <div className="warn">Nur den API-Wallet-Key, nie den Main-Wallet-Key. Network: {network}.</div>
         <div className="field">
-          <label>API wallet private key</label>
-          <input
-            type="password"
+          <label>API wallet private key — reinkopieren</label>
+          <textarea
+            className="paste-box"
             autoComplete="off"
+            spellCheck={false}
             value={pk}
-            onChange={(e) => setPk(e.target.value)}
-            placeholder="0x…"
+            onChange={(e) => applyKey(e.target.value)}
+            onPaste={(e) => {
+              e.preventDefault();
+              applyKey(e.clipboardData.getData("text"));
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              applyKey(e.dataTransfer.getData("text"));
+            }}
+            onDragOver={(e) => e.preventDefault()}
+            placeholder="Hier klicken und den Key einfügen (Ctrl+V)…"
+            rows={4}
           />
+          <button type="button" className="btn" onClick={() => void pasteFromClipboard()}>
+            Aus Zwischenablage einfügen
+          </button>
         </div>
         <div className="field">
-          <label>Master account (optional — auto-detected from agent)</label>
-          <input value={override} onChange={(e) => setOverride(e.target.value)} placeholder="0x…" />
+          <label>Master account (optional — wird automatisch erkannt)</label>
+          <input
+            value={override}
+            onChange={(e) => setOverride(e.target.value)}
+            onPaste={(e) => {
+              e.preventDefault();
+              setOverride(takeKey(e.clipboardData.getData("text")));
+            }}
+            placeholder="0x… optional, einfach reinkopieren"
+          />
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button type="button" className="btn ghost" onClick={onClose}>

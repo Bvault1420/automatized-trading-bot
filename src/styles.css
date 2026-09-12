@@ -262,3 +262,12 @@ td { font-family: "IBM Plex Mono", monospace; font-size: 12px; }
 .empty { color: var(--dim); padding: 28px; text-align: center; }
 .tiny { color: var(--dim); font-size: 11px; }
 .search { margin: 8px 12px; width: calc(100% - 24px); }
+.paste-box {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-all;
+}
